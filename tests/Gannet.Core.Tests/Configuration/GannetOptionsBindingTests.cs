@@ -54,4 +54,11 @@ public class GannetOptionsBindingTests
         Assert.Equal("qwen3", model.Model);
         Assert.True(options.Models.ContainsKey("LOCAL"));
     }
+
+    [Fact]
+    public void Readers_refuse_private_addresses_unless_allowed()
+    {
+        Assert.False(Bind().Readers.AllowPrivateAddresses);
+        Assert.True(Bind(("Gannet:Readers:AllowPrivateAddresses", "true")).Readers.AllowPrivateAddresses);
+    }
 }
