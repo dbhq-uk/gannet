@@ -37,7 +37,7 @@ internal static partial class CitationGroups
 
     // One token: an optional "Source" prefix, then S<digits> (the space is tolerated), or letters then digits,
     // or digits alone. Decimal parts are matched so that "S1.5" is one token and not an S1 followed by junk.
-    [GeneratedRegex(@"(?:source\s*:?\s*)?(?:s\s*\d+(?:\.\d+)*|[a-z]{1,6}\d+(?:\.\d+)*|\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(?:source\s*(?::\s*)?)?(?:s\s*\d+(?:\.\d+)*|[a-z]{1,6}\d+(?:\.\d+)*|\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Token();
 
     // What may sit between tokens. Empty entries ("[S1,,S2]", "[S1,]") are just extra separators.
