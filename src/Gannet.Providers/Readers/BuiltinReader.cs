@@ -17,7 +17,11 @@ internal sealed class BuiltinReader : IPageReader
 
     private const int MaxBytes = 5_000_000;
     private const int MaxRedirects = 5;
-    internal static readonly TimeSpan DefaultParseTimeout = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan DefaultParseTimeout = TimeSpan.FromSeconds(60);
+    internal static readonly TimeSpan DefaultDownloadTimeout = TimeSpan.FromSeconds(30);
+
+    // The parser recurses, and a stack overflow cannot be caught, so the parse runs on its own thread with a stack larger than the default.
+    private const int ParseStackBytes = 16 * 1024 * 1024;
 
     // A process-wide cap on parse workers. A parse that times out is abandoned, not stopped, so it keeps its slot until it really ends.
     internal static readonly int GateSize = Math.Max(1, Environment.ProcessorCount / 2);
@@ -27,6 +31,7 @@ internal sealed class BuiltinReader : IPageReader
     private readonly bool allowPrivateAddresses;
     private readonly Func<string, CancellationToken, Task<IPAddress[]>> resolve;
     private readonly TimeSpan parseTimeout;
+    private readonly TimeSpan downloadTimeout;
     private readonly SemaphoreSlim gate;
     private readonly Func<Uri, string, (string Title, string Markdown)> parse;
 
@@ -37,19 +42,21 @@ internal sealed class BuiltinReader : IPageReader
     {
     }
 
-    /// <summary>For tests: a fake name lookup, a parse time limit, a parse gate of another size and another parse step.</summary>
+    /// <summary>For tests: a fake name lookup, a parse time limit, a parse gate of another size, another parse step and a download deadline.</summary>
     internal BuiltinReader(
         HttpClient http,
         bool allowPrivateAddresses,
         Func<string, CancellationToken, Task<IPAddress[]>> resolve,
         TimeSpan? parseTimeout,
         SemaphoreSlim? gate = null,
-        Func<Uri, string, (string Title, string Markdown)>? parse = null)
+        Func<Uri, string, (string Title, string Markdown)>? parse = null,
+        TimeSpan? downloadTimeout = null)
     {
         this.http = http;
         this.allowPrivateAddresses = allowPrivateAddresses;
         this.resolve = resolve;
         this.parseTimeout = parseTimeout ?? DefaultParseTimeout;
+        this.downloadTimeout = downloadTimeout ?? DefaultDownloadTimeout;
         this.gate = gate ?? DefaultGate;
         this.parse = parse ?? Extract;
     }
@@ -69,30 +76,54 @@ internal sealed class BuiltinReader : IPageReader
         {
             await CheckAddressAsync(current, ct);
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, current);
-            request.Headers.UserAgent.ParseAdd(UserAgent);
-            request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5");
-            request.Headers.AcceptLanguage.ParseAdd("en-GB,en;q=0.8");
-
-            // Headers first, so the byte cap applies before HttpClient buffers a body. The response is disposed at the end of each pass.
-            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)
+            // The send and the body read share one deadline, so a server that stalls cannot hold the read for ever. The parse is not under it.
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(downloadTimeout);
+            try
             {
-                if (response.Headers.Location is not { } location)
+                using var request = new HttpRequestMessage(HttpMethod.Get, current);
+                request.Headers.UserAgent.ParseAdd(UserAgent);
+                request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5");
+                request.Headers.AcceptLanguage.ParseAdd("en-GB,en;q=0.8");
+
+                // Headers first, so the byte cap applies before HttpClient buffers a body. The response is disposed at the end of each pass.
+                using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                if (response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)
                 {
-                    throw new ServiceFailedException(DisplayName, $"The site answered {(int)response.StatusCode} without saying where the page moved to.");
+                    if (response.Headers.Location is not { } location)
+                    {
+                        // HttpClient could not parse the header at all: say so, rather than "no Location".
+                        if (response.Headers.NonValidated.Contains("Location"))
+                        {
+                            throw new ServiceFailedException(DisplayName, "The site redirected to an address that is not valid.");
+                        }
+
+                        throw new ServiceFailedException(DisplayName, $"The site answered {(int)response.StatusCode} without saying where the page moved to.");
+                    }
+
+                    if (redirects >= MaxRedirects)
+                    {
+                        throw new ServiceFailedException(DisplayName, "The page redirected too many times.");
+                    }
+
+                    // A malformed Location (for example "http:127.0.0.1") is a typed failure, never a UriFormatException.
+                    if (!Uri.TryCreate(current, location, out var next))
+                    {
+                        throw new ServiceFailedException(DisplayName, "The site redirected to an address that is not valid.");
+                    }
+
+                    current = next;
+                    continue;
                 }
 
-                if (redirects >= MaxRedirects)
-                {
-                    throw new ServiceFailedException(DisplayName, "The page redirected too many times.");
-                }
-
-                current = location.IsAbsoluteUri ? location : new Uri(current, location);
-                continue;
+                var downloaded = await DownloadAsync(response, deadline.Token);
+                deadline.CancelAfter(Timeout.InfiniteTimeSpan);
+                return await FinishAsync(current, downloaded, maxCharacters, ct);
             }
-
-            return await ReadResponseAsync(current, response, maxCharacters, ct);
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                throw new ServiceFailedException(DisplayName, "the page took too long to download");
+            }
         }
     }
 
@@ -111,40 +142,51 @@ internal sealed class BuiltinReader : IPageReader
         await PublicAddressGuard.EnsurePublicAsync(url, resolve, ct);
     }
 
-    private async Task<PageContent> ReadResponseAsync(Uri url, HttpResponseMessage response, int maxCharacters, CancellationToken ct)
+    private sealed record Downloaded(string MediaType, bool IsHtml, string Body);
+
+    /// <summary>Reads the body (capped) and maps an error status or a challenge to a typed failure. Everything here runs under the download deadline.</summary>
+    private async Task<Downloaded> DownloadAsync(HttpResponseMessage response, CancellationToken token)
     {
         var mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "text/html";
         var isHtml = mediaType is "text/html" or "application/xhtml+xml";
         var isText = isHtml || mediaType == "text/plain";
 
         // A challenge page can come with a success or a 5xx status, so read those bodies. Other types are not read at all.
-        var body = isText && (response.IsSuccessStatusCode || (int)response.StatusCode >= 500) ? await ReadCappedAsync(response, ct) : string.Empty;
+        var body = isText && (response.IsSuccessStatusCode || (int)response.StatusCode >= 500) ? await ReadCappedAsync(response, token) : string.Empty;
         if (LooksLikeChallenge(body))
         {
             throw new ChallengeDetectedException(DisplayName, "The site answered with a bot challenge page.");
         }
 
-        await HttpErrors.EnsureSuccessAsync(response, DisplayName, website: true, ct);
+        await HttpErrors.EnsureSuccessAsync(response, DisplayName, website: true, token);
 
         if (!isText)
         {
             throw new ServiceFailedException(DisplayName, $"The page is {mediaType}, which the built-in reader does not read.");
         }
 
-        if (!isHtml)
+        return new Downloaded(mediaType, isHtml, body);
+    }
+
+    private async Task<PageContent> FinishAsync(Uri url, Downloaded page, int maxCharacters, CancellationToken ct)
+    {
+        if (!page.IsHtml)
         {
-            return new PageContent(url, url.Host, TextCap.Cut(body.Trim(), maxCharacters), Name);
+            return new PageContent(url, url.Host, TextCap.Cut(page.Body.Trim(), maxCharacters), Name);
         }
 
-        var (title, markdown) = await ExtractAsync(url, body, ct);
+        var (title, markdown) = await ExtractAsync(url, page.Body, ct);
         return new PageContent(url, title, TextCap.Cut(markdown.Trim(), maxCharacters), Name);
     }
 
     private async Task<(string Title, string Markdown)> ExtractAsync(Uri url, string html, CancellationToken ct)
     {
-        if (HtmlDepth.Exceeds(html))
+        switch (HtmlDepth.Scan(html))
         {
-            throw new ServiceFailedException(DisplayName, "the page is too deeply nested to read");
+            case HtmlScan.TooDeep:
+                throw new ServiceFailedException(DisplayName, "the page is too deeply nested to read");
+            case HtmlScan.TooManyElements:
+                throw new ServiceFailedException(DisplayName, "the page has too many elements to read");
         }
 
         // Wait for a slot, for as long as a parse may take. Cancellation here is a cancellation, not a "busy".
@@ -154,22 +196,12 @@ internal sealed class BuiltinReader : IPageReader
         }
 
         // Parsing cannot be cancelled. The slot is released when the worker really ends, not when the caller gives up: on a timeout the worker
-        // thread is abandoned, not stopped, so it keeps its slot and at most GateSize threads can be busy at once. The worker is not given ct,
-        // because a worker that never starts would never release the slot.
-        Task<(string Title, string Markdown)> worker;
+        // thread is abandoned, not stopped, so it keeps its slot and at most GateSize threads can be busy at once.
+        var done = new TaskCompletionSource<(string Title, string Markdown)>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
-            worker = Task.Run(() =>
-            {
-                try
-                {
-                    return parse(url, html);
-                }
-                finally
-                {
-                    gate.Release();
-                }
-            });
+            var worker = new Thread(() => RunParse(url, html, done), ParseStackBytes) { IsBackground = true, Name = "gannet-parse" };
+            worker.Start();
         }
         catch
         {
@@ -179,11 +211,43 @@ internal sealed class BuiltinReader : IPageReader
 
         try
         {
-            return await worker.WaitAsync(parseTimeout, ct);
+            return await done.Task.WaitAsync(parseTimeout, ct);
         }
         catch (TimeoutException)
         {
             throw new ServiceFailedException(DisplayName, "the page took too long to parse");
+        }
+    }
+
+    private void RunParse(Uri url, string html, TaskCompletionSource<(string Title, string Markdown)> done)
+    {
+        (string Title, string Markdown) result = default;
+        Exception? failure = null;
+        try
+        {
+            result = parse(url, html);
+        }
+        catch (OperationCanceledException e)
+        {
+            failure = e;
+        }
+        catch (Exception)
+        {
+            // A parser can throw on a hostile page. Its message can quote page text, so it is never passed on.
+            failure = new ServiceFailedException(DisplayName, "the page could not be parsed");
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        if (failure is null)
+        {
+            done.SetResult(result);
+        }
+        else
+        {
+            done.SetException(failure);
         }
     }
 

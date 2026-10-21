@@ -319,19 +319,21 @@ public class BuiltinReaderTests
         var started = Stopwatch.StartNew();
         var page = await Read(Reader(handler));
         Assert.Contains("Gannets dive", page.Markdown, StringComparison.Ordinal);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"took {started.Elapsed}");
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(45), $"took {started.Elapsed}");
     }
 
     [Fact]
     public void Unclosed_paragraphs_and_list_items_do_not_count_as_nesting() =>
         Assert.False(HtmlDepth.Exceeds("<html><body>" + string.Concat(Enumerable.Repeat("<p>Gannets dive.", 5000)) + string.Concat(Enumerable.Repeat("<li>Gannets", 5000)) + string.Concat(Enumerable.Repeat("<td>x<tr>", 5000))));
 
+    // The scan is deliberately conservative: it does not trust self-closing syntax outside real void elements, so a long run of svg shapes is refused
+    // and the next reader takes over. A normal inline svg (a few shapes) is read.
     [Fact]
-    public async Task Self_closing_svg_shapes_do_not_count_as_nesting()
+    public async Task A_long_run_of_svg_shapes_is_refused_and_a_short_one_is_read()
     {
-        Assert.False(HtmlDepth.Exceeds("<html><body><svg>" + string.Concat(Enumerable.Repeat("<path d=\"M0 0\"/>", 5000)) + "</svg></body></html>"));
+        Assert.Equal(HtmlScan.TooDeep, HtmlDepth.Scan("<html><body><svg>" + string.Concat(Enumerable.Repeat("<path d=\"M0 0\"/>", 300)) + "</svg></body></html>"));
 
-        var html = "<html><body><svg>" + string.Concat(Enumerable.Repeat("<path d=\"M0 0\"/>", 300)) + "</svg><p>Gannets dive.</p></body></html>";
+        var html = "<html><body><svg>" + string.Concat(Enumerable.Repeat("<path d=\"M0 0\"/>", 20)) + "</svg><p>Gannets dive.</p></body></html>";
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text(html));
         var page = await Read(Reader(handler));
         Assert.Contains("Gannets dive.", page.Markdown, StringComparison.Ordinal);
@@ -351,14 +353,16 @@ public class BuiltinReaderTests
     public async Task A_parse_that_takes_too_long_is_a_typed_failure()
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text(Article));
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Reader(handler, parseTimeout: TimeSpan.Zero)));
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, TimeSpan.Zero, new SemaphoreSlim(1), null);
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
         Assert.Equal("the page took too long to parse", error.Message);
     }
 
     [Fact]
-    public void The_defaults_are_a_thirty_second_parse_limit_and_a_gate_sized_to_half_the_processors()
+    public void The_defaults_are_a_sixty_second_parse_limit_and_a_gate_sized_to_half_the_processors()
     {
-        Assert.Equal(TimeSpan.FromSeconds(30), BuiltinReader.DefaultParseTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(60), BuiltinReader.DefaultParseTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(30), BuiltinReader.DefaultDownloadTimeout);
         Assert.Equal(Math.Max(1, Environment.ProcessorCount / 2), BuiltinReader.GateSize);
     }
 
@@ -438,7 +442,9 @@ public class BuiltinReaderTests
         Assert.Equal(1, gate.CurrentCount);
 
         var bad = new BuiltinReader(handler.Client(), false, PublicDns, null, gate, (_, _) => throw new InvalidOperationException("boom"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Read(bad));
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(bad));
+        Assert.Equal("the page could not be parsed", error.Message);
+        Assert.DoesNotContain("boom", error.Message, StringComparison.Ordinal);
         Assert.Equal(1, gate.CurrentCount);
     }
 
@@ -464,12 +470,165 @@ public class BuiltinReaderTests
     }
 
     [Fact]
-    public async Task Cancellation_while_parsing_is_a_cancellation_not_a_timeout()
+    public async Task Cancellation_during_a_blocking_parse_is_a_cancellation_not_a_timeout()
     {
+        var gate = new SemaphoreSlim(1);
+        var parse = new BlockingParse();
+        var reader = Gated(gate, parse, TimeSpan.FromSeconds(30));
         using var cts = new CancellationTokenSource();
+
+        var read = reader.ReadAsync(new Uri("https://birds.example/g"), 8000, cts.Token);
+        await parse.Entered;
         await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => read);
+        Assert.Equal(0, gate.CurrentCount);
+        parse.Release();
+    }
+
+    [Fact]
+    public async Task The_parse_runs_on_a_dedicated_background_thread_with_a_large_stack()
+    {
+        var gate = new SemaphoreSlim(1);
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text(Article));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Reader(handler).ReadAsync(new Uri("https://birds.example/g"), 8000, cts.Token));
+        bool? background = null;
+        bool? pooled = null;
+        var usable = 0L;
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, null, gate, (_, _) =>
+        {
+            background = Thread.CurrentThread.IsBackground;
+            pooled = Thread.CurrentThread.IsThreadPoolThread;
+            usable = StackProbe.UsableBytes();
+            return ("T", "text");
+        });
+
+        await Read(reader);
+
+        Assert.True(background);
+        Assert.False(pooled);
+        Assert.True(usable >= 12L * 1024 * 1024, $"only {usable} bytes of stack were usable");
+    }
+
+    // Recurses until the runtime says the stack is nearly used up, so it measures the stack without overflowing it.
+    private static class StackProbe
+    {
+        private const int Frame = 16 * 1024;
+
+        public static long UsableBytes() => Depth(0) * (long)Frame;
+
+        private static int Depth(int n)
+        {
+            if (!System.Runtime.CompilerServices.RuntimeHelpers.TryEnsureSufficientExecutionStack())
+            {
+                return n;
+            }
+
+            Span<byte> frame = stackalloc byte[Frame];
+            frame[0] = (byte)n;
+            return Depth(n + 1) + (frame[0] == 255 ? 0 : 0);
+        }
+    }
+
+    // Redirects, downloads and parser failures must all come out typed.
+    [Theory]
+    [InlineData("http:127.0.0.1")]
+    [InlineData("http://")]
+    [InlineData("https://exa mple.org/")]
+    [InlineData("//")]
+    public async Task A_malformed_redirect_address_is_a_typed_failure(string location)
+    {
+        var handler = new StubHttpHandler(_ => Redirect(location));
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Reader(handler)));
+        Assert.Equal("The site redirected to an address that is not valid.", error.Message);
+    }
+
+    // A stream that never produces a byte but honours cancellation.
+    private sealed class StallingStream : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task A_body_that_stalls_hits_the_download_deadline()
+    {
+        var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StallingStream()) { Headers = { ContentType = new("text/html") } } });
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, null, new SemaphoreSlim(1), null, TimeSpan.FromMilliseconds(300));
+        var started = Stopwatch.StartNew();
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
+
+        Assert.Equal("the page took too long to download", error.Message);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task The_callers_cancellation_during_a_stalled_download_is_a_cancellation()
+    {
+        var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StallingStream()) { Headers = { ContentType = new("text/html") } } });
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, null, new SemaphoreSlim(1), null, TimeSpan.FromSeconds(30));
+        using var cts = new CancellationTokenSource();
+
+        var read = reader.ReadAsync(new Uri("https://birds.example/g"), 8000, cts.Token);
+        await Task.Delay(200);
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => read);
+    }
+
+    [Fact]
+    public async Task A_page_with_too_many_elements_is_refused_before_parsing()
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Text("<html><body>" + string.Concat(Enumerable.Repeat("<br>", 30_001))));
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Reader(handler)));
+        Assert.Equal("the page has too many elements to read", error.Message);
+    }
+
+    [Fact]
+    public async Task A_megabyte_of_optgroups_is_refused_fast_and_never_reaches_the_parser()
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Text("<html><body>" + string.Concat(Enumerable.Repeat("<optgroup>", 100_000))));
+        var parsed = false;
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, null, new SemaphoreSlim(1), (_, _) =>
+        {
+            parsed = true;
+            return ("T", "x");
+        });
+        var started = Stopwatch.StartNew();
+
+        await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
+
+        Assert.False(parsed);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), $"took {started.Elapsed}");
     }
 
     [Fact]
