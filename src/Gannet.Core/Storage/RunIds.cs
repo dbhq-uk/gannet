@@ -8,7 +8,7 @@ public static partial class RunIds
 {
     private const string Alphabet = "abcdefghijkmnpqrstuvwxyz23456789";
 
-    [GeneratedRegex("^r_[a-z0-9]{12}$")]
+    [GeneratedRegex(@"\Ar_[a-z0-9]{12}\z")]
     private static partial Regex Shape();
 
     public static string New() => "r_" + RandomNumberGenerator.GetString(Alphabet, 12);

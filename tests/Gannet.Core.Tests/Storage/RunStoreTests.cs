@@ -177,6 +177,156 @@ public class RunStoreTests
         Assert.DoesNotContain("text", names);
         Assert.DoesNotContain("snippet", names);
         Assert.DoesNotContain("content", names);
+        Assert.DoesNotContain("pageText", names);
+        Assert.DoesNotContain("body", names);
+        Assert.DoesNotContain("excerpt", names);
+        Assert.DoesNotContain("html", names);
+        Assert.DoesNotContain("markdownPage", names);
+    }
+
+    [Fact]
+    public async Task A_corrupt_index_is_rebuilt_from_the_run_records()
+    {
+        var store = Store();
+        var kept = Run("dan@dbhq.uk", "Kept?", RunStatus.Completed, time.GetUtcNow());
+        await store.SaveAsync(kept, CancellationToken.None);
+        await blobs.PutAsync("runs/index.json", Encoding.UTF8.GetBytes("{ not json"), CancellationToken.None);
+
+        var listed = await store.ListAsync("dan@dbhq.uk", CancellationToken.None);
+
+        Assert.Equal([kept.Id], listed.Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task A_corrupt_index_does_not_stop_save_or_find_previous()
+    {
+        var store = Store();
+        var first = Run("dan@dbhq.uk", "What is X?", RunStatus.Completed, time.GetUtcNow().AddHours(-1));
+        await store.SaveAsync(first, CancellationToken.None);
+        await blobs.PutAsync("runs/index.json", Encoding.UTF8.GetBytes("[1, 2"), CancellationToken.None);
+
+        var found = await store.FindPreviousAsync("dan@dbhq.uk", "what is x", CancellationToken.None);
+        Assert.Equal(first.Id, found?.Id);
+
+        await blobs.PutAsync("runs/index.json", Encoding.UTF8.GetBytes("garbage"), CancellationToken.None);
+        var second = Run("dan@dbhq.uk", "Next?", RunStatus.Running, time.GetUtcNow());
+        await store.SaveAsync(second, CancellationToken.None);
+
+        Assert.Equal([second.Id, first.Id], (await store.ListAsync(null, CancellationToken.None)).Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task Rebuild_picks_up_orphan_runs_and_skips_unreadable_ones()
+    {
+        var store = Store();
+        var indexed = Run("local", "Indexed?", RunStatus.Completed, time.GetUtcNow());
+        var orphan = Run("local", "Orphan?", RunStatus.Completed, time.GetUtcNow().AddMinutes(1));
+        await store.SaveAsync(indexed, CancellationToken.None);
+        await blobs.PutAsync($"runs/{orphan.Id}/run.json", JsonSerializer.SerializeToUtf8Bytes(orphan, GannetJson.Options), CancellationToken.None);
+        await blobs.PutAsync($"runs/{RunIds.New()}/run.json", Encoding.UTF8.GetBytes("{ broken"), CancellationToken.None);
+        await blobs.PutAsync($"runs/{RunIds.New()}/events.jsonl", Encoding.UTF8.GetBytes("x"), CancellationToken.None);
+        Assert.Equal([indexed.Id], (await store.ListAsync(null, CancellationToken.None)).Select(s => s.Id));
+
+        await store.RebuildIndexAsync(CancellationToken.None);
+
+        Assert.Equal([orphan.Id, indexed.Id], (await store.ListAsync(null, CancellationToken.None)).Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task Concurrent_saves_of_one_run_leave_the_index_and_run_record_in_step()
+    {
+        var store = new RunStore(new YieldingBlobStore(blobs), time);
+        for (var i = 0; i < 60; i++)
+        {
+            var id = RunIds.New();
+            var running = Run("local", "Q?", RunStatus.Running, time.GetUtcNow()) with { Id = id };
+            var done = running with { Status = RunStatus.Completed };
+
+            await Task.WhenAll(store.SaveAsync(running, CancellationToken.None), store.SaveAsync(done, CancellationToken.None));
+
+            var saved = await store.GetAsync(id, CancellationToken.None);
+            var indexed = (await store.ListAsync(null, CancellationToken.None)).Single(s => s.Id == id);
+            Assert.Equal(saved!.Status, indexed.Status);
+        }
+    }
+
+    [Fact]
+    public async Task FindPrevious_normalises_the_stored_question_at_lookup()
+    {
+        var store = Store();
+        var run = Run("dan@dbhq.uk", "What is X?", RunStatus.Completed, time.GetUtcNow());
+        await store.SaveAsync(run, CancellationToken.None);
+        var stale = new RunSummary(run.Id, run.Owner, run.Question, "an-older-normalisation", run.Status, run.CreatedAt, null);
+        await blobs.PutAsync("runs/index.json", JsonSerializer.SerializeToUtf8Bytes(new[] { stale }, GannetJson.Options), CancellationToken.None);
+
+        var found = await store.FindPreviousAsync("dan@dbhq.uk", "what is x", CancellationToken.None);
+
+        Assert.Equal(run.Id, found?.Id);
+    }
+
+    [Fact]
+    public async Task Owners_match_without_regard_to_case()
+    {
+        var store = Store();
+        var run = Run("Dan@DBHQ.uk", "What is X?", RunStatus.Completed, time.GetUtcNow());
+        await store.SaveAsync(run, CancellationToken.None);
+
+        Assert.Single(await store.ListAsync("dan@dbhq.uk", CancellationToken.None));
+        Assert.Equal(run.Id, (await store.FindPreviousAsync("DAN@dbhq.uk", "what is x", CancellationToken.None))?.Id);
+        Assert.Empty(await store.ListAsync("other@dbhq.uk", CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("r_aaaaaaaaaaaa\n")]
+    [InlineData("r_aaaaaaaaaaaaa")]
+    [InlineData("")]
+    public async Task Malformed_ids_are_invalid_and_never_read(string id)
+    {
+        Assert.False(RunIds.IsValid(id));
+        Assert.Null(await Store().GetAsync(id, CancellationToken.None));
+        Assert.Equal(0, blobs.Reads);
+    }
+
+    [Fact]
+    public async Task Every_concrete_event_type_round_trips_and_transient_ones_are_not_saved()
+    {
+        var store = Store();
+        var run = Run("local", "Q?", RunStatus.Running, time.GetUtcNow());
+        var id = new SourceId(1);
+        var url = new Uri("https://example.com/a");
+        var query = new PlannedQuery("q", "why");
+        RunEvent[] events =
+        [
+            new RunStarted(ResearchMode.Agent, "m", "f", "s", ["builtin"], false),
+            new PlanReady(new ResearchPlan("t", ["o"], [query], ["i"])),
+            new SearchStarted(0, "q", "r"),
+            new SearchResults(0, "q", [new SourceRef(id, "T", url)]),
+            new SearchFailed(0, "q", "svc", "failed", "m"),
+            new PageReadStarted(id, url),
+            new PageRead(id, "builtin", 10),
+            new PageReadFailed(id, "builtin", "failed", "m"),
+            new SourceScored(id, 50, CredibilityLevel.Medium, true, ["rule"]),
+            new FindingsExtracted(id, ["f"]),
+            new GapChecked(0, ["g"], [query], true),
+            new SectionStarted(0, 1, "T"),
+            new SectionDelta(0, "partial"),
+            new SectionWritten(0, "T", 5),
+            new CitationRemoved("T", "S9", "unknown"),
+            new ModelUsage("write", "m", 1, 2),
+            new ReportReady(1.0, 1),
+            new RunFinished(RunStatus.Completed, null),
+            new ChatEntry("e1", ChatLane.Plan, "c", "C", ChatEntryKind.Reply, "redacted"),
+            new ChatEntryLive("e1", ChatLane.Plan, "c", "C", ChatEntryKind.Reply, "full"),
+        ];
+        var concrete = typeof(RunEvent).Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(RunEvent)) && !t.IsAbstract).ToHashSet();
+        Assert.Equal(concrete, events.Select(e => e.GetType()).ToHashSet());
+
+        await store.SaveEventsAsync(run.Id, events, CancellationToken.None);
+        var back = await store.GetEventsAsync(run.Id, CancellationToken.None);
+
+        var expected = events.Where(e => e is not ITransientEvent).Select(e => e.GetType()).ToList();
+        Assert.Equal(expected, back.Select(e => e.GetType()).ToList());
+        Assert.DoesNotContain(back, e => e is ITransientEvent);
     }
 
     [Theory]
@@ -196,5 +346,26 @@ public class RunStoreTests
         Assert.Equal(ids.Count, ids.Distinct().Count());
         Assert.False(RunIds.IsValid("r_ABC"));
         Assert.False(RunIds.IsValid("../x"));
+    }
+
+    /// <summary>Delays every read and write, before and after it lands, by a random moment, so concurrent saves interleave as they would over a network.</summary>
+    private sealed class YieldingBlobStore(IBlobStore inner) : IBlobStore
+    {
+        public async Task PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken ct)
+        {
+            await Task.Delay(Random.Shared.Next(0, 3), ct);
+            await inner.PutAsync(key, content, ct);
+            await Task.Delay(Random.Shared.Next(0, 3), ct);
+        }
+
+        public async Task<byte[]?> GetAsync(string key, CancellationToken ct)
+        {
+            await Task.Delay(Random.Shared.Next(0, 3), ct);
+            return await inner.GetAsync(key, ct);
+        }
+
+        public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct) => inner.ListAsync(prefix, ct);
+
+        public Task DeleteAsync(string key, CancellationToken ct) => inner.DeleteAsync(key, ct);
     }
 }
