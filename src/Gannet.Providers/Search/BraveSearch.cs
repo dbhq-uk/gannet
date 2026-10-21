@@ -46,11 +46,11 @@ internal sealed partial class BraveSearch(HttpClient http, string name, ServiceO
             return false;
         }
 
-        using var body = await ReadErrorBodyAsync(response, ct);
-        return body is not null && QuotaCodes.Contains(body.RootElement.Prop("error").Str("code"), StringComparer.Ordinal);
+        return await ReadErrorBodyAsync(response, body => QuotaCodes.Contains(body.Prop("error").Str("code"), StringComparer.Ordinal), ct);
     }
 
-    [GeneratedRegex("<[^>]+>")]
+    // [^<>] keeps each scan to one tag, so a run of unmatched "<" costs linear time, not quadratic.
+    [GeneratedRegex("<[^<>]*>")]
     private static partial Regex Tags();
 
     private static SearchHit? Map(JsonElement r)

@@ -37,16 +37,20 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
     protected virtual Task<bool> IsQuotaResponseAsync(HttpResponseMessage response, CancellationToken ct) =>
         Task.FromResult(IsQuotaStatus(response.StatusCode));
 
-    /// <summary>Reads a small JSON error body to classify it. Returns null for a body that is missing, too large or not JSON.</summary>
-    protected async Task<JsonDocument?> ReadErrorBodyAsync(HttpResponseMessage response, CancellationToken ct)
+    /// <summary>
+    /// Reads a small JSON error body and returns what the predicate says about it. Anything wrong with the body (missing, too large, not JSON, bad UTF-8
+    /// in a field the predicate reads) gives false, so the standard status mapping applies and nothing escapes.
+    /// </summary>
+    protected async Task<bool> ReadErrorBodyAsync(HttpResponseMessage response, Func<JsonElement, bool> check, CancellationToken ct)
     {
         try
         {
-            return await JsonRead.ParseAsync(response, DisplayName, MaxErrorBodyBytes, ct);
+            using var body = await JsonRead.ParseAsync(response, DisplayName, MaxErrorBodyBytes, ct);
+            return check(body.RootElement);
         }
-        catch (ServiceFailedException)
+        catch (Exception e) when (e is ServiceFailedException or InvalidOperationException or JsonException or HttpRequestException or IOException)
         {
-            return null;
+            return false;
         }
     }
 
