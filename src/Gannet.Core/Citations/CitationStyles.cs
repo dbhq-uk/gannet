@@ -30,7 +30,20 @@ public static class CitationStyles
     private static string TitleOf(ReferenceSource source) =>
         string.IsNullOrWhiteSpace(source.Title) ? source.Url.Host : string.Join(' ', source.Title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
-    private static string Long(DateOnly date) => date.ToString("MMMM dd, yyyy", CultureInfo.InvariantCulture);
+    // Fixed English month forms for MLA and IEEE, so the output never depends on the machine's locale.
+    // May, June and July are in full and September is "Sept.".
+    private static readonly string[] AbbreviatedMonths = ["Jan.", "Feb.", "Mar.", "Apr.", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."];
+
+    // Chicago: "March 7, 2026".
+    private static string Long(DateOnly date) => date.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
+
+    // IEEE: "Mar. 7, 2026".
+    private static string Abbreviated(DateOnly date) =>
+        string.Create(CultureInfo.InvariantCulture, $"{AbbreviatedMonths[date.Month - 1]} {date.Day}, {date.Year}");
+
+    // MLA: "07 Mar. 2026".
+    private static string DayMonthYear(DateOnly date) =>
+        string.Create(CultureInfo.InvariantCulture, $"{date.Day:00} {AbbreviatedMonths[date.Month - 1]} {date.Year}");
 
     private sealed class Apa : ICitationStyle
     {
@@ -44,7 +57,7 @@ public static class CitationStyles
         public string Name => "mla";
 
         public string Format(ReferenceSource source, DateOnly accessed) =>
-            $"\"{TitleOf(source)}\". Web. {accessed.ToString("dd MMM. yyyy", CultureInfo.InvariantCulture)}. <{source.Url.AbsoluteUri}>";
+            $"\"{TitleOf(source)}\". Web. {DayMonthYear(accessed)}. <{source.Url.AbsoluteUri}>";
     }
 
     private sealed class Chicago : ICitationStyle
@@ -58,6 +71,6 @@ public static class CitationStyles
     {
         public string Name => "ieee";
 
-        public string Format(ReferenceSource source, DateOnly accessed) => $"\"{TitleOf(source)},\" {source.Url.AbsoluteUri}, accessed {Long(accessed)}.";
+        public string Format(ReferenceSource source, DateOnly accessed) => $"\"{TitleOf(source)},\" {source.Url.AbsoluteUri}, accessed {Abbreviated(accessed)}.";
     }
 }
