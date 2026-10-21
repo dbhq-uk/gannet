@@ -2,7 +2,10 @@ using Gannet.Core.Domain;
 
 namespace Gannet.Core.Configuration;
 
-/// <summary>The "Gannet" configuration section. Keys live here and nowhere else.</summary>
+/// <summary>
+/// The "Gannet" configuration section. Keys live here and nowhere else.
+/// This type holds secrets (API keys, the S3 secret, the proxy password). It must never be serialised or logged.
+/// </summary>
 public sealed class GannetOptions
 {
     public const string Section = "Gannet";
@@ -37,7 +40,11 @@ public sealed class DefaultsOptions
 
     public string? Search { get; set; }
 
-    public List<string> Readers { get; set; } = ["builtin"];
+    /// <summary>Reader names as configured. Null when unset; read <see cref="EffectiveReaders"/> instead.</summary>
+    public List<string>? Readers { get; set; }
+
+    /// <summary>The readers to use, in order: the configured list, or just "builtin" when none is configured.</summary>
+    public IReadOnlyList<string> EffectiveReaders => Readers is { Count: > 0 } ? Readers : ["builtin"];
 
     public string CitationStyle { get; set; } = "apa";
 }
