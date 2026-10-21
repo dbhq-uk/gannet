@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using Gannet.Core.Configuration;
@@ -74,7 +73,7 @@ public class FirecrawlSearchTests
         await Firecrawl(handler).SearchAsync("q", asked, CancellationToken.None);
 
         var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body!).RootElement;
-        Assert.Equal(sent.ToString(CultureInfo.InvariantCulture), body.GetProperty("limit").GetInt32().ToString(CultureInfo.InvariantCulture));
+        Assert.Equal(sent, body.GetProperty("limit").GetInt32());
     }
 
     [Fact]
@@ -168,13 +167,27 @@ public class FirecrawlSearchTests
         Assert.DoesNotContain("fc-secret", error.Message, StringComparison.Ordinal);
     }
 
-    // Keyless use is capped per IP address per day and the docs say exceeding the cap returns a 429, so it is a rate limit.
+    // Keyless use is capped per IP address per day and the docs say exceeding the cap returns a 429, so with no key a 429 is a quota error.
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("fc-secret", true)]
+    public async Task The_keyless_daily_cap_is_a_quota_error(string? key, bool keylessOption)
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json("""{ "success": false, "error": "Rate limit exceeded" }""", HttpStatusCode.TooManyRequests));
+        var error = await Assert.ThrowsAsync<QuotaExhaustedException>(() => Firecrawl(handler, new ServiceOptions { ApiKey = key, Keyless = keylessOption }).SearchAsync("q", 3, CancellationToken.None));
+
+        Assert.Contains("429", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("fc-secret", error.Message, StringComparison.Ordinal);
+    }
+
+    // With a key a 429 is the per-minute plan rate or concurrency limit, which is a rate limit.
     [Fact]
-    public async Task The_keyless_daily_cap_is_a_rate_limit()
+    public async Task With_a_key_a_429_is_a_rate_limit()
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Json("""{ "success": false, "error": "Rate limit exceeded" }""", HttpStatusCode.TooManyRequests));
 
-        await Assert.ThrowsAsync<RateLimitedException>(() => Firecrawl(handler, new ServiceOptions()).SearchAsync("q", 3, CancellationToken.None));
+        await Assert.ThrowsAsync<RateLimitedException>(() => Firecrawl(handler).SearchAsync("q", 3, CancellationToken.None));
     }
 
     [Fact]

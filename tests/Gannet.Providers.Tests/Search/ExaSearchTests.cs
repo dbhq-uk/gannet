@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using Gannet.Core.Configuration;
@@ -52,6 +51,17 @@ public class ExaSearchTests
     }
 
     [Fact]
+    public async Task Cutting_the_snippet_never_splits_a_surrogate_pair()
+    {
+        var text = new string('a', 299) + "\U0001F600" + "tail";
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json($$"""{ "results": [ { "title": "T", "url": "https://t.example/", "text": "{{text}}" } ] }"""));
+        var hit = Assert.Single(await Exa(handler).SearchAsync("q", 3, CancellationToken.None));
+
+        Assert.Equal(new string('a', 299), hit.Snippet);
+        Assert.Equal(text, hit.Content);
+    }
+
+    [Fact]
     public async Task A_result_with_no_text_has_no_page_content()
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Json("""{ "results": [ { "title": "T", "url": "https://t.example/" } ] }"""));
@@ -97,7 +107,7 @@ public class ExaSearchTests
         await Exa(handler).SearchAsync("q", asked, CancellationToken.None);
 
         var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body!).RootElement;
-        Assert.Equal(sent.ToString(CultureInfo.InvariantCulture), body.GetProperty("numResults").GetInt32().ToString(CultureInfo.InvariantCulture));
+        Assert.Equal(sent, body.GetProperty("numResults").GetInt32());
     }
 
     [Theory]
