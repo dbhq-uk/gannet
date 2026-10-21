@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://gannet.dbhq.uk/sitemap-index.xml

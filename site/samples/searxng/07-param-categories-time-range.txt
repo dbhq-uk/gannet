@@ -1,0 +1,22 @@
+$ curl -s 'http://127.0.0.1:8888/search?q=searxng&format=json&categories=news&time_range=month' \
+  | jq '[.results[:3][] | {title, url, engine, publishedDate}]'
+[
+  {
+    "title": "Perplexity has an open-source alternative now, and I'm hooked",
+    "url": "https://www.msn.com/en-us/news/other/perplexity-has-an-open-source-alternative-now-and-im-hooked/ar-AA2fDhwV",
+    "engine": "bing news",
+    "publishedDate": null
+  },
+  {
+    "title": "Your AI agent will run your errands. It will also learn how you think",
+    "url": "https://www.msn.com/en-in/technology/artificial-intelligence/your-ai-agent-will-run-your-errands-it-will-also-learn-how-you-think/ar-AA2fzaOp",
+    "engine": "bing news",
+    "publishedDate": null
+  },
+  {
+    "title": "Jon Stewart Commits to Hosting The Daily Show Through 2028 Election Cycle",
+    "url": "https://www.aceshowbiz.com/news/view/00262689.html",
+    "engine": "bing news",
+    "publishedDate": null
+  }
+]

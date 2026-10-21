@@ -16,6 +16,8 @@ src/Gannet.Web         Blazor UI, REST API (/api), MCP (/mcp), sign-in
 src/Gannet.Cli         the gannet command
 tests/                 one test project per source project, plus TestSupport
 deploy/cloudflare      the Worker and Container config for a Cloudflare deployment
+site                   gannet.dbhq.uk, an Astro site; see site/README.md
+assets                 the logo; every file is drawn by assets/_gen/logo.py
 ```
 
 ## The rules that define this tool
@@ -34,4 +36,10 @@ dotnet test Gannet.slnx
 dotnet format Gannet.slnx --verify-no-changes
 dotnet run --project src/Gannet.Web
 dotnet run --project src/Gannet.Cli -- research "your question"
+cd site && npm test                 # builds the site, then checks it
+python3 assets/_gen/logo.py         # redraws every logo file
 ```
+
+## The site
+
+`site/` is gannet.dbhq.uk. gannet is in development, so the site describes what it is being built to do and never what it does today; `site/tests/content.test.mjs` fails on wording that would only fit a released tool. When a pull request ships something the site names, take that phrase off the test's `UNSHIPPED` list in the same pull request.

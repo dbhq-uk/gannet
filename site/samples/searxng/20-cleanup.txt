@@ -1,0 +1,8 @@
+$ docker rm -f searxng searxng-limiter valkey
+docker network rm searxng-net
+docker ps -a --filter name=searxng --filter name=valkey -q | wc -l
+searxng
+searxng-limiter
+valkey
+searxng-net
+0

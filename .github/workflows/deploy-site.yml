@@ -1,0 +1,201 @@
+name: deploy-site
+
+# Push to main -> gannet.dbhq.uk is built, tested, deployed, the edge cache
+# purged, and every page verified with a cache-buster. Ported from
+# dbhq-uk/terraken's deploy-site.yml, whose notes explain each step.
+#
+# The purge is the step that gets forgotten by hand, and forgetting it means the
+# site silently serves stale files. It is not optional.
+#
+# Cloudflare never builds from this repository: the Pages project `gannet-site`
+# is direct-upload, and it serves exactly what this workflow last uploaded. The
+# project, its custom domain and the DNS record are Terraform in the dbhq repo
+# at infra/gannet-site/, applied by hand and never from CI - terraken's split
+# (dbhq repo, docs/reference/hosting.md): the source lives beside the code it
+# describes, the zone stays with the estate.
+#
+# THE DEPLOY IS SWITCHED OFF UNTIL THE SITE IS READY, as 6502's is. It runs only
+# when the repository variable SITE_DEPLOY is "true", set once the Pages
+# project exists and the three secrets are added. Until then a push to main
+# leaves this workflow skipped rather than red. It runs only from main: the
+# upload is labelled main and would publish any other branch as the live site.
+#
+# The token is `gannet repo - Pages deploy + cache purge`: Pages Edit and Cache
+# Purge, nothing else. This repository is public, so it never holds the
+# account-wide token.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/deploy-site.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: vars.SITE_DEPLOY == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      # Actions pinned to commit SHAs here, and to tags in ci.yml. That is not
+      # an inconsistency to tidy up: this job holds a Cloudflare token with
+      # write access to the account, and a hijacked tag would run with it in
+      # scope. ci.yml has no secrets at all, so the same hijack there costs a
+      # red build and nothing else. Pin where it buys something.
+      # fetch-depth: 0 because the sitemap's <lastmod> is blamed out of git
+      # (site/src/lib/content-dates.mjs, 20 Sep 2026). On a shallow clone every
+      # page would publish the deploy date - the build stamp the dates exist to
+      # avoid - so the build refuses to run rather than shipping it.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install
+        working-directory: site
+        run: npm ci
+
+      # THE TESTS GATE THE DEPLOY, and they are not decoration. They assert the
+      # house writing rules (no em dashes, no trailing full stop on a heading,
+      # British spelling, never "we"), the per-page SEO band, and - the ones
+      # this site exists for - that gannet is described as in development and
+      # never as a tool that runs today.
+      #
+      # `npm test` runs the build itself through the `pretest` script, so this
+      # single step is build-and-verify.
+      #
+      # A SILENT SKIP IN CI LOOKS EXACTLY LIKE A PASS. tests/content.test.mjs
+      # imports src/lib/site.ts directly and relies on Node's type stripping, so
+      # a runner that lost that feature fails loudly - but a suite that shrank
+      # for any other reason would not. So the count is asserted.
+      - name: Build and verify
+        working-directory: site
+        run: |
+          set -euo pipefail
+          # `set -o pipefail` keeps the tee from swallowing a red suite: a
+          # non-zero npm test aborts the step here, before the count is read.
+          npm test 2>&1 | tee /tmp/gannet-test.log
+          # node --test prints "# pass 44" when its output is not a TTY and
+          # "i pass 44" when it is. Match either, so the floor cannot be
+          # defeated by a reporter change.
+          count() { grep -oE "(#|.) $1 [0-9]+" /tmp/gannet-test.log | grep -oE '[0-9]+$' | tail -1; }
+          PASS=$(count pass); FAILED=$(count fail)
+          echo "pass=${PASS:-unread} fail=${FAILED:-unread}"
+          # An unread count is a failure, not a pass: the :- defaults are chosen
+          # so a missing number fails the step rather than skipping it.
+          [ "${FAILED:-1}" = "0" ]
+          # 44 tests as at 21 Oct 2026. Adding tests is expected; losing them is
+          # the failure this floor catches. Raise the number when the suite grows.
+          [ "${PASS:-0}" -ge 44 ]
+
+      - name: Deploy to Cloudflare Pages
+        working-directory: site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler pages deploy dist --project-name gannet-site --branch main
+
+      # The token goes in via env, not interpolated into the command line, so it
+      # cannot surface in a traced command or an error message.
+      - name: Purge the Cloudflare cache
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ZONE: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          set -euo pipefail
+          RESP=$(curl -sf -X POST \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" \
+            --data '{"purge_everything":true}')
+          echo "$RESP"
+          echo "$RESP" | grep -q '"success":true'
+
+      # Cache-busted: a plain request can still be served a stale edge copy
+      # right after a purge.
+      #
+      # THE LIST IS DERIVED FROM THE BUILD, not typed out here. A hardcoded list
+      # failed a DBHQ deploy on 13 Sep 2026 by still naming a page that had
+      # correctly become a redirect - the site was fine and the check was wrong,
+      # which is the worst way for a gate to fail. Reading dist/ means a renamed
+      # or added page cannot leave this step behind.
+      - name: Every page must be serving
+        working-directory: site
+        run: |
+          set -euo pipefail
+          PAGES=$(cd dist && find . -name index.html -printf '%h\n' \
+                  | sed 's|^\.||; s|$|/|' | sed 's|^/$|/|' | sort)
+          echo "checking: $(echo "$PAGES" | tr '\n' ' ')"
+          COUNT=0
+          FAIL=0
+          for p in $PAGES; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              "https://gannet.dbhq.uk${p}?cb=${GITHUB_SHA}")
+            echo "${p} -> ${CODE}"
+            [ "$CODE" = "200" ] || FAIL=1
+            COUNT=$((COUNT + 1))
+          done
+          # A find that matched nothing would pass the loop silently, which
+          # would turn this gate into decoration.
+          [ "$COUNT" -ge 5 ] || { echo "only $COUNT pages found - the derivation is broken"; exit 1; }
+          [ "$FAIL" = "0" ]
+
+      # A styled 200 in place of a 404 is how a typo'd link becomes an indexed
+      # page. Pages only returns a real 404 status if 404.html made the upload.
+      - name: A missing page must return 404
+        run: |
+          set -euo pipefail
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://gannet.dbhq.uk/no-such-page/?cb=${GITHUB_SHA}")
+          echo "missing page -> $CODE"
+          [ "$CODE" = "404" ]
+
+      # The sitemap and llms.txt are how this site is found without a link from
+      # dbhq.uk, and both are plain files that a glob change could silently drop.
+      #
+      # analytics.js and consent.js are in this list for a sharper reason. They
+      # are loaded by <script src> from every page. A 404 on analytics.js looks
+      # exactly like a site with no analytics rather than like a broken one, and
+      # a 404 on consent.js is worse: GA still loads, but the notice never shows
+      # and "Cookie settings" never appears, so nobody is told and nobody can opt
+      # out - which is what the PECR exception the site relies on requires.
+      # Either would go unnoticed for as long as nobody looked.
+      - name: The machine-readable files must be serving
+        run: |
+          set -euo pipefail
+          for f in sitemap-index.xml sitemap-0.xml robots.txt llms.txt copy.js analytics.js consent.js; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              "https://gannet.dbhq.uk/${f}?cb=${GITHUB_SHA}")
+            echo "${f} -> ${CODE}"
+            [ "$CODE" = "200" ]
+          done
+
+      # _headers has no glob-friendly extension and lives in public/, so Astro
+      # copies it - but if the policy ever stops arriving, the site loses HSTS
+      # and its CSP at the edge and nothing else here would notice. Headers only
+      # apply at the Cloudflare edge, so this can only be checked post-deploy.
+      #
+      # HSTS MATTERS MORE HERE THAN THE OTHER CHECKS SUGGEST. The dbhq.uk zone
+      # sends includeSubDomains, so this hostname is already committed to HTTPS
+      # by the apex whatever this file says. Losing the header here would not
+      # take the site down; it would quietly remove the belt from the braces.
+      - name: The response headers must be applied at the edge
+        run: |
+          set -euo pipefail
+          H=$(curl -sI "https://gannet.dbhq.uk/?cb=${GITHUB_SHA}" | tr -d '\r')
+          echo "$H"
+          grep -qi '^strict-transport-security:' <<<"$H"
+          grep -qi '^content-security-policy:' <<<"$H"
+          grep -qi '^x-content-type-options: nosniff' <<<"$H"

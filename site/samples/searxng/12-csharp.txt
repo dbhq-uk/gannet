@@ -1,0 +1,12 @@
+$ dotnet run client.cs -- "searxng docker"
+query: searxng docker
+results: 36
+- GitHub - searxng/searxng-docker · GitHub
+  https://github.com/searxng/searxng-docker
+  engines: google cse, brave
+- SearXNG: Your Private Search Engine - Docker Tutorial - YouTube
+  https://www.youtube.com/watch?v=UBLypfM9U-g
+  engines: google cse, brave
+- Activity · janhq/searxng-docker-for-mcp
+  https://github.com/janhq/searxng-docker-for-mcp/activity
+  engines: brave

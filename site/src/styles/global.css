@@ -1,0 +1,197 @@
+/* gannet.dbhq.uk - global styles.
+
+   Class names are terraken's, so the components copied from that site keep
+   working, and its reasons travel with them (see the notes in
+   dbhq-uk/terraken/site/src/styles/global.css). The look is this site's own:
+   site/DESIGN.md. */
+
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/Geist.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/GeistMono.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+
+/* The sticky header is 64px; this keeps a focused or linked target clear of it
+   (WCAG 2.2, 2.4.11 Focus Not Obscured). */
+html { scroll-behavior: smooth; scroll-padding-top: 88px; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+img, svg { display: block; max-width: 100%; }
+picture { display: contents; }
+a { color: inherit; text-decoration: none; }
+
+/* HEADLINES AT 460, NEVER BOLD. The reference's signature: the hierarchy comes
+   from size and space, and a 700 headline is the thing it forbids. Tracking is
+   a large-size correction only - nothing under 24px is tracked. */
+h1, h2, h3 { color: var(--text); font-weight: 460; text-wrap: balance; }
+h1 { font-size: clamp(2.5rem, 5.4vw, 4rem); line-height: 1; letter-spacing: -0.028em; }
+h2 { font-size: clamp(1.75rem, 3.2vw, 3rem); line-height: 1.04; letter-spacing: -0.022em; }
+h3 { font-size: clamp(1.15rem, 1.6vw, 1.35rem); line-height: 1.25; font-weight: 500; }
+p { color: var(--text-2); text-wrap: pretty; }
+
+.container { max-width: var(--max); margin-inline: auto; padding-inline: var(--pad); }
+.container--wide { max-width: var(--max-wide); }
+.section { padding-block: var(--section-standard); position: relative; }
+.section--tight { padding-block: var(--section-tight); }
+.section--roomy { padding-block: var(--section-roomy); }
+.section--ruled { border-top: 1px solid var(--border); }
+.section--plane { background: var(--surface); border-block: 1px solid var(--border); }
+
+.editorial-head {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(20px, 4vw, 56px);
+  align-items: end;
+}
+@media (max-width: 760px) { .editorial-head { grid-template-columns: 1fr; gap: 16px; } }
+
+.mono { font-family: var(--font-mono); font-feature-settings: "tnum"; }
+.mono-label {
+  font-family: var(--font);
+  font-size: .8rem;
+  font-weight: 500;
+  letter-spacing: .02em;
+  color: var(--text-3);
+}
+.kicker { display: inline-block; font-size: .95rem; font-weight: 500; color: var(--text-3); }
+.muted { color: var(--text-2); }
+.lead { font-size: clamp(1.125rem, 1.4vw, 1.3rem); line-height: 1.5; color: var(--text-2); max-width: 58ch; }
+.block-h { margin-bottom: clamp(20px, 2.6vw, 32px); }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* BUTTONS. Navy is the one chromatic fill on the page, as the reference keeps
+   wine; a page asks for one thing. Pills, no shadow, no lift. */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5em;
+  font-family: inherit; font-size: 1rem; font-weight: 500; line-height: 1;
+  min-height: 48px; padding: 0 1.4em; border-radius: var(--r-btn);
+  border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+  transition: background .2s var(--ease-out), border-color .2s var(--ease-out), color .2s var(--ease-out);
+}
+.btn-primary { background: var(--ink); color: var(--on-accent); }
+.btn-primary:hover { background: var(--ink-deep); }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border-2); }
+.btn-ghost:hover { border-color: var(--text); }
+.btn-arrow { transition: transform .2s var(--ease-out); }
+.btn:hover .btn-arrow { transform: translateX(2px); }
+
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: var(--r-xs); }
+::selection { background: var(--ink); color: var(--on-accent); }
+
+/* NAVY BANDS: the status strip and the footer. .band-ink is terraken's name,
+   kept so its components work; here it is navy. */
+.band-ink { background: var(--ink); color: var(--ink-text); border: 0; }
+.band-ink h1, .band-ink h2, .band-ink h3, .band-ink strong { color: var(--surface); }
+.band-ink p, .band-ink li, .band-ink .lead, .band-ink .muted { color: var(--ink-text); }
+.band-ink .mono-label, .band-ink .kicker { color: color-mix(in srgb, var(--ink-text) 74%, var(--ink)); }
+.band-ink a { color: var(--ink-text); }
+.band-ink a:hover { color: var(--surface); }
+.band-ink .out-glyph { color: inherit; }
+
+/* THE SEA BAND: the one full-bleed dark band, once per page at most. */
+.band-sea { background: var(--sea); color: var(--sea-text); }
+.band-sea h2, .band-sea h3, .band-sea strong { color: var(--surface); }
+.band-sea p, .band-sea li { color: var(--sea-text); }
+.band-sea .mono-label { color: color-mix(in srgb, var(--sea-text) 74%, var(--sea)); }
+.band-sea code { background: rgba(255,255,255,.1); color: var(--surface); }
+
+.crumb { font-size: .9rem; margin-bottom: clamp(20px, 2.6vw, 28px); }
+.crumb a { color: var(--text-3); font-weight: 500; }
+.crumb a::before { content: "\2190"; margin-right: 7px; }
+.crumb a:hover { color: var(--text); }
+
+.out-glyph { margin-left: 4px; color: var(--blue); font-weight: 500; }
+
+/* LINKS IN TEXT: blue, underlined on hover, as the reference's inline link. */
+.lnk { color: var(--blue-deep); font-weight: 500; }
+.lnk:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* PAGE HEAD for the guides: a parchment band, the headline left-aligned. */
+.page-head { padding-block: clamp(48px, 7vw, 88px) clamp(16px, 2.5vw, 28px); }
+.page-head .lead { margin-top: var(--s-4); }
+
+/* LONG-FORM. 18px is the floor and 68ch the measure, terraken's two numbers,
+   for the same reason: these guides are read start to finish. */
+.prose { max-width: 68ch; font-size: 1.125rem; }
+.prose > * + * { margin-top: 1.05em; }
+.prose h2 { margin-top: clamp(40px, 4.4vw, 60px); font-size: clamp(1.6rem, 2.4vw, 2.1rem); line-height: 1.12; scroll-margin-top: 100px; }
+.prose h3 { margin-top: clamp(28px, 3vw, 36px); font-size: clamp(1.2rem, 1.6vw, 1.35rem); scroll-margin-top: 100px; }
+.prose p { line-height: 1.7; }
+.prose ul, .prose ol { padding-left: 1.3em; display: grid; gap: .5em; }
+.prose li { color: var(--text-2); line-height: 1.65; }
+.prose li::marker { color: var(--text-3); }
+.prose strong { color: var(--text); font-weight: 600; }
+.prose a { color: var(--blue-deep); font-weight: 500; text-decoration: underline; text-decoration-color: var(--border-2); text-underline-offset: 3px; transition: text-decoration-color .2s; }
+.prose a:hover { text-decoration-color: var(--blue); }
+/* `:not(pre) > code`, never `.prose code`: a <pre> holds a <code> too, and the
+   plain selector would tint every line of a code block. */
+.prose :not(pre) > code {
+  font-family: var(--font-mono); font-size: .86em;
+  padding: .12em .36em; border-radius: var(--r-xs);
+  background: var(--surface-2); color: var(--text); overflow-wrap: anywhere;
+}
+.prose a code { color: inherit; }
+.prose blockquote { border-left: 2px solid var(--border-2); padding-left: 1em; color: var(--text-2); }
+
+/* CODE BLOCKS AND CAPTURED OUTPUT. Charcoal, not navy: a code block is a
+   terminal, and a navy one would read as another brand band. */
+.code {
+  margin-top: 1.2em; border-radius: var(--r-md); background: #1F1E1D; color: #EDEBE6;
+  overflow: hidden;
+}
+.code-label { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; font-size: .8rem; color: #B7B3AB; border-bottom: 1px solid #34322F; }
+.code pre { margin: 0; padding: 16px; overflow-x: auto; font-family: var(--font-mono); font-size: .86rem; line-height: 1.6; }
+.code pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+
+.toc { margin-top: clamp(24px, 3vw, 32px); padding-top: 20px; border-top: 1px solid var(--border); max-width: 68ch; }
+.toc-label { margin-bottom: 10px; }
+.toc-list { list-style: none; padding: 0; display: grid; gap: 7px; }
+.toc-list a { color: var(--text-2); font-size: .95rem; font-weight: 500; }
+.toc-list a:hover { color: var(--blue-deep); }
+
+.onward { margin-top: clamp(40px, 5vw, 60px); padding-top: 24px; border-top: 1px solid var(--border); }
+.container > .onward:only-child { margin-top: 0; }
+.onward-label { margin-bottom: 14px; }
+.onward-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.onward-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 16px 18px; }
+.onward-card a { color: var(--text); font-weight: 500; font-size: 1rem; }
+.onward-card a::after { content: " \2192"; color: var(--blue); }
+.onward-card a:hover { color: var(--blue-deep); }
+.onward-card p { margin-top: 6px; font-size: .9rem; line-height: 1.55; }
+
+.tbl-wrap { overflow-x: auto; margin-top: clamp(16px, 2vw, 20px); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
+.tbl { border-collapse: collapse; width: 100%; min-width: 560px; text-align: left; font-size: .95rem; }
+.tbl th, .tbl td { padding: 12px 16px; border-top: 1px solid var(--border); vertical-align: top; }
+.tbl thead th { border-top: 0; color: var(--text-3); font-size: .8rem; font-weight: 500; }
+.tbl td { color: var(--text-2); line-height: 1.55; }
+.tbl td:first-child { color: var(--text); font-weight: 500; }
+.tbl code { font-family: var(--font-mono); font-size: .86rem; color: var(--text); }
+.prose .tbl-wrap { max-width: none; }
+
+/* A wide table may break out of the 68ch measure on desktop. */
+@media (min-width: 1000px) { .prose > .tbl-wrap.wide { width: min(1120px, calc(100vw - 2 * var(--pad))); } }

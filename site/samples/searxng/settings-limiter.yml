@@ -1,0 +1,14 @@
+# The same settings with the limiter on. The limiter needs a Valkey database.
+use_default_settings: true
+
+server:
+  secret_key: "change-me-gannet-guide-placeholder-7f3a9c"
+  limiter: true
+
+search:
+  formats:
+    - html
+    - json
+
+valkey:
+  url: valkey://valkey:6379/0

@@ -1,0 +1,2 @@
+$ curl -s 'http://127.0.0.1:8888/search?q=searxng+docker&format=json' | jq '.results | length'
+35

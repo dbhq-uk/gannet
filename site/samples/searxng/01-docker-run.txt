@@ -1,0 +1,5 @@
+$ docker run --name searxng -d \
+  -p 127.0.0.1:8888:8080 \
+  -v "$PWD/settings.yml:/etc/searxng/settings.yml:ro" \
+  searxng/searxng@sha256:5ed0323b5f5f8701264ef65e239a2bd83cb57098f2b971fa30bf79c06eeae271
+8829ebfd54cc87689ee1c240f1da07e3024054f4f44711e5534df0f8878108ac

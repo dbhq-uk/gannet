@@ -1,0 +1,13 @@
+$ for p in 1 2; do
+  echo "pageno=$p"
+  curl -s "http://127.0.0.1:8888/search?q=searxng+docker&format=json&pageno=$p" \
+    | jq -r '.results[:3][].url'
+done
+pageno=1
+https://github.com/searxng/searxng-docker
+https://docs.searxng.org/admin/installation-docker.html
+https://hub.docker.com/r/searxng/searxng
+pageno=2
+https://searxng.org/
+https://alandoyle.com/blog/new-searxng-docker-image/
+https://www.reddit.com/r/Searx/comments/1opbhu2/automated_searxng_deployment_script_for_ubuntu/

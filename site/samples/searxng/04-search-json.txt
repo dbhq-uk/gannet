@@ -1,0 +1,107 @@
+$ curl -s 'http://127.0.0.1:8888/search?q=searxng+docker&format=json' | jq '.results |= .[:2]'
+{
+  "query": "searxng docker",
+  "results": [
+    {
+      "template": "default.html",
+      "title": "GitHub - searxng/searxng-docker · GitHub",
+      "content": "28 Mar 2026 ... Repository navigation · NotificationsYou must be signed in to change notification settings · Fork677 (677) · Star3.3k (3.3k)You must be signed ...",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "https://imgs.search.brave.com/idECZ9_lyhTmpTISzwQhMNCGBN-k7P6HLWFrdpI8EWQ/rs:fit:200:200:1:0/g:ce/aHR0cHM6Ly9vcGVu/Z3JhcGguZ2l0aHVi/YXNzZXRzLmNvbS81/MWViNGU0MTA4NGY1/NmZmMWJlYmNmNTE2/OGQ1M2NhOGNlOTBk/OGMwYjM5NDY2MGFm/YjVjODc1ZDBiYjgw/YTg5L3NlYXJ4bmcv/c2VhcnhuZy1kb2Nr/ZXI",
+      "publishedDate": null,
+      "pubdate": null,
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "brave"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        1,
+        1
+      ],
+      "score": 4.0,
+      "category": "general",
+      "url": "https://github.com/searxng/searxng-docker",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "github.com",
+        "/searxng/searxng-docker",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "template": "default.html",
+      "title": "SearXNG: Your Private Search Engine - Docker Tutorial - YouTube",
+      "content": "Thanks to DataCamp for sponsoring today's video!Learn Cloud Computing with Datacamp: https://datacamp.pxf.io/9gbEdETired of Google tracking your every search...",
+      "img_src": "",
+      "iframe_src": "",
+      "audio_src": "",
+      "thumbnail": "https://imgs.search.brave.com/nL-urU5CGADahhdTA-9JCVmecqcJ1IG1WmY1kRF6V-4/rs:fit:200:200:1:0/g:ce/aHR0cHM6Ly9pLnl0/aW1nLmNvbS92aS9V/Qkx5cGZNOVUtZy9t/YXhyZXNkZWZhdWx0/LmpwZw",
+      "publishedDate": "2024-10-23T12:00:38",
+      "pubdate": "2024-10-23 12:00:38",
+      "length": null,
+      "views": "",
+      "author": "",
+      "metadata": "",
+      "priority": "",
+      "engines": [
+        "google cse",
+        "brave"
+      ],
+      "open_group": false,
+      "close_group": false,
+      "positions": [
+        5,
+        4
+      ],
+      "score": 0.9,
+      "category": "general",
+      "url": "https://www.youtube.com/watch?v=UBLypfM9U-g",
+      "engine": "brave",
+      "parsed_url": [
+        "https",
+        "www.youtube.com",
+        "/watch",
+        "",
+        "v=UBLypfM9U-g",
+        ""
+      ]
+    }
+  ],
+  "answers": [],
+  "corrections": [],
+  "infoboxes": [],
+  "suggestions": [
+    "searxng docker windows",
+    "searxng-docker github",
+    "searxng docker compose",
+    "searxng docker environment variables",
+    "searxng-docker yaml",
+    "searxng docker install",
+    "searxng docker yaml",
+    "install searxng docker-compose",
+    "searxng - docker hub",
+    "searxng-docker desktop"
+  ],
+  "unresponsive_engines": [
+    [
+      "duckduckgo",
+      "CAPTCHA"
+    ],
+    [
+      "wikipedia",
+      "too many requests"
+    ]
+  ]
+}

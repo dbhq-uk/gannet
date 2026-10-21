@@ -1,0 +1,12 @@
+$ python3 client.py "searxng docker"
+query: searxng docker
+results: 35
+- GitHub - searxng/searxng-docker · GitHub
+  https://github.com/searxng/searxng-docker
+  engines: google cse, brave
+- Installation container - SearXNG Documentation (2026.10.17+1c10abe2d)
+  https://docs.searxng.org/admin/installation-docker.html
+  engines: google cse, brave
+- searxng/searxng - Docker Image
+  https://hub.docker.com/r/searxng/searxng
+  engines: google cse, brave

@@ -1,0 +1,11 @@
+$ curl -s 'http://127.0.0.1:8888/search?q=searxng&format=json&engines=wikipedia' \
+  | jq '{results: (.results | length), unresponsive_engines}'
+{
+  "results": 0,
+  "unresponsive_engines": [
+    [
+      "wikipedia",
+      "Suspended: too many requests"
+    ]
+  ]
+}

@@ -1,0 +1,35 @@
+---
+// The in-development status. Its words come from `status` in src/lib/site.ts
+// and tests/content.test.mjs pins them on every page that describes the tool.
+// It is a status, not a pitch: no sign-up, no waitlist, no date.
+import { status } from "../lib/site";
+
+interface Props {
+  tone?: "on-photo" | "on-paper";
+}
+const { tone = "on-photo" } = Astro.props;
+---
+
+<p class={`status status--${tone}`} data-status>
+  <span class="status-label"><span class="status-dot" aria-hidden="true"></span>{status.label}</span>
+  <span class="status-text">{status.text}</span>
+</p>
+
+<style>
+  .status {
+    display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; align-self: flex-start;
+    padding: 6px 14px 6px 6px; border-radius: 999px; font-size: .9rem; line-height: 1.35;
+  }
+  .status-label {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 4px 10px; border-radius: 999px; font-weight: 500;
+  }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status--on-photo { background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .32); color: rgba(255, 255, 255, .92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .status--on-photo .status-label { background: var(--surface); color: var(--ink); }
+  .status--on-photo .status-dot { background: var(--ink); }
+  .status--on-paper { background: var(--surface); border: 1px solid var(--border); color: var(--text-2); }
+  .status--on-paper .status-label { background: var(--ink); color: var(--surface); }
+  .status--on-paper .status-dot { background: var(--surface); }
+  @media (max-width: 560px) { .status { border-radius: var(--r-md); } }
+</style>

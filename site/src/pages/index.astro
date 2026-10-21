@@ -1,0 +1,238 @@
+---
+import { Image } from "astro:assets";
+import Base from "../layouts/Base.astro";
+import Faqs from "../components/Faqs.astro";
+import Status from "../components/Status.astro";
+import { REPO, UPSTREAM, choices, homeFaqs, nav, progress, rules, site, stages } from "../lib/site";
+import { CODE_ID, faqNode, sourceCodeNode } from "../lib/schema";
+import hero from "../assets/photo/hero-dive-1600.webp";
+import under from "../assets/photo/under-1600.webp";
+
+const title = "gannet: open-source deep research agent that cites sources";
+const description =
+  "An open-source deep research agent being built in C#. It plans, searches the web, weighs each source and cites every claim to a page it read.";
+const canonical = new URL("/", Astro.site).href;
+---
+
+<Base
+  title={title}
+  description={description}
+  mainEntityId={CODE_ID}
+  schema={[sourceCodeNode(), faqNode(`${canonical}#faq`, homeFaqs)]}
+>
+  <section class="hero">
+    <Image
+      src={hero}
+      alt="A gannet folded into its plunge dive above a dark sea at sunset"
+      widths={[800, 1600]}
+      sizes="100vw"
+      class="hero-photo"
+      loading="eager"
+      fetchpriority="high"
+    />
+    <div class="hero-shade" aria-hidden="true"></div>
+    <div class="container hero-inner">
+      <Status />
+      <h1>An open-source deep research agent, built to cite every claim</h1>
+      <p class="hero-lead">{site.lead}</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href={REPO}>Follow the build on GitHub<span class="btn-arrow" aria-hidden="true">&#8599;</span><span class="sr-only"> (external site)</span></a>
+        <a class="btn btn-glass" href="#guides">Read the guides</a>
+      </div>
+      <p class="glass-label" id="rules-label">The rules gannet is built to keep</p>
+      <ul class="glass-row" role="list" aria-labelledby="rules-label">
+        {rules.map((r) => (
+          <li class="glass">
+            <h2 class="glass-h">{r.h}</h2>
+            <p>{r.p}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="editorial-head block-h">
+        <h2>Four stages, one workflow</h2>
+        <p class="lead">
+          gannet is designed to run a question through four stages on Microsoft Agent Framework Workflows, the shape it takes from&#32;<a class="lnk" href={UPSTREAM}>deep-research-agent<span class="out-glyph" aria-hidden="true">&#8599;</span><span class="sr-only"> (external site)</span></a>.
+          This is what the workflow is being built to do.
+        </p>
+      </div>
+      <ol class="stages" role="list">
+        {stages.map((s) => (
+          <li class="stage">
+            <span class="stage-n">{s.n}</span>
+            <h3>{s.h}</h3>
+            <p>{s.p}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="band-sea sea">
+    <div class="sea-photo-wrap">
+      <Image src={under} alt="Underwater, a gannet trailing bubbles as it dives towards a shoal of fish" widths={[800, 1600]} sizes="(max-width: 900px) 100vw, 50vw" class="sea-photo" />
+    </div>
+    <div class="sea-text">
+      <p class="mono-label">Already in the code</p>
+      <h2>Citations it cannot make up</h2>
+      <p>
+        A model asked to cite its sources will sometimes cite one it never read. So gannet is designed never to ask
+        the model to number anything. Each source is to get an ID the moment a tool fetches it,&#32;<code>S1</code>,&#32;<code>S2</code>&#32;
+        and on, and the writer cites those IDs. Then&#32;<code>CitationChecker</code>&#32;removes any ID the run never
+        fetched, and&#32;<code>CitationNumberer</code>&#32;turns the rest into numbers and a reference list.
+      </p>
+      <p>
+        Those two are merged and tested, in&#32;<code>src/Gannet.Core/Citations/</code>, with the four reference styles:
+        APA, MLA, Chicago and IEEE. So is the credibility scoring each source will get, in&#32;<code>src/Gannet.Core/Credibility/</code>.
+      </p>
+      <a class="sea-link" href={`${REPO}/tree/main/src/Gannet.Core/Citations`}>Read the citation code<span class="out-glyph" aria-hidden="true">&#8599;</span><span class="sr-only"> (external site)</span></a>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="editorial-head block-h">
+        <h2>Your model, your search service</h2>
+        <p class="lead">
+          Keys stay in configuration and the choice is made per run. These are the providers gannet is being built to
+          support. Ollama with a SearXNG instance you host is the path with no keys at all.
+        </p>
+      </div>
+      <div class="choice-grid">
+        <div class="card">
+          <p class="mono-label">Models</p>
+          <ul class="pills" role="list">{choices.models.map((m) => <li>{m}</li>)}</ul>
+        </div>
+        <div class="card">
+          <p class="mono-label">Search services</p>
+          <ul class="pills" role="list">{choices.search.map((m) => <li>{m}</li>)}</ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--ruled">
+    <div class="container">
+      <div class="editorial-head block-h">
+        <h2>Where the build stands</h2>
+        <p class="lead">
+          gannet is built in the open, one reviewed pull request at a time. Nothing here is a promise of a date.
+        </p>
+      </div>
+      <div class="choice-grid">
+        <div class="card">
+          <p class="mono-label">Merged</p>
+          <ul class="ticks" role="list">{progress.done.map((d) => <li>{d}</li>)}</ul>
+        </div>
+        <div class="card">
+          <p class="mono-label">Still to build</p>
+          <ul class="ticks ticks--open" role="list">{progress.next.map((d) => <li>{d}</li>)}</ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--ruled" id="guides">
+    <div class="container">
+      <div class="editorial-head block-h">
+        <h2>Guides</h2>
+        <p class="lead">Written to be useful whether or not you ever use gannet.</p>
+      </div>
+      <ul class="guides" role="list">
+        {nav.map((n) => (
+          <li class="card guide">
+            <a href={n.path}><h3>{n.label}</h3></a>
+            <p>{n.blurb}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <section class="section section--ruled" id="faq">
+    <div class="container">
+      <Faqs faqs={homeFaqs} />
+    </div>
+  </section>
+</Base>
+
+<style>
+  /* THE HERO. A full-bleed photograph with the headline over open sky, the
+     reference's opening move. The shade is a left-to-right wash so white type
+     holds contrast over the brightest part of the sky; it is not decoration,
+     and it stops before the bird. */
+  .hero { position: relative; isolation: isolate; color: var(--surface); overflow: hidden; }
+  .hero-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 70% 40%; z-index: -2; }
+  .hero-shade {
+    position: absolute; inset: 0; z-index: -1;
+    background:
+      linear-gradient(90deg, rgba(20, 16, 12, .72) 0%, rgba(20, 16, 12, .5) 42%, rgba(20, 16, 12, 0) 70%),
+      linear-gradient(0deg, rgba(20, 16, 12, .55) 0%, rgba(20, 16, 12, 0) 40%);
+  }
+  .hero-inner { padding-block: clamp(40px, 7vw, 88px) clamp(28px, 4vw, 48px); min-height: min(88vh, 860px); display: flex; flex-direction: column; }
+  .hero h1 { color: var(--surface); max-width: 15ch; margin-top: clamp(28px, 5vw, 56px); }
+  .hero-lead { color: rgba(255, 255, 255, .88); font-size: clamp(1.1rem, 1.4vw, 1.25rem); line-height: 1.5; max-width: 52ch; margin-top: 20px; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .btn-glass { background: rgba(255, 255, 255, .14); color: var(--surface); border-color: rgba(255, 255, 255, .4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .btn-glass:hover { background: rgba(255, 255, 255, .22); }
+  .hero .btn-primary { background: var(--surface); color: var(--ink); }
+  .hero .btn-primary:hover { background: #E8EDF4; }
+
+  /* THE GLASS CARDS carry the rules as text, never a mock of output that does
+     not exist yet. White at 85 per cent with a translucent border and no
+     shadow, the reference's floating card. */
+  .glass-label { margin-top: auto; padding-top: 48px; font-size: .9rem; font-weight: 500; color: rgba(255, 255, 255, .86); }
+  .glass-row { list-style: none; padding: 0; margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 900px) { .glass-row { grid-template-columns: 1fr; } }
+  .glass {
+    background: rgba(255, 255, 255, .85); color: var(--text);
+    border: 1px solid rgba(255, 255, 255, .6); border-radius: var(--r-md);
+    padding: 18px 20px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .glass-h { font-size: 1.05rem; line-height: 1.3; font-weight: 500; letter-spacing: 0; color: var(--text); }
+  .glass p { margin-top: 8px; font-size: .93rem; line-height: 1.5; color: var(--text-2); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 20px 22px; }
+
+  .stages { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 1000px) { .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .stages { grid-template-columns: 1fr; } }
+  .stage { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 22px; }
+  .stage-n { font-family: var(--font-mono); font-size: .8rem; color: var(--text-3); }
+  .stage h3 { margin-top: 18px; font-size: 1.5rem; font-weight: 460; }
+  .stage p { margin-top: 10px; font-size: .97rem; line-height: 1.55; }
+
+  /* THE SEA BAND: the page's one full-bleed dark band, photograph on the left,
+     text on the right, as the reference's feature band. */
+  .sea { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; }
+  @media (max-width: 900px) { .sea { grid-template-columns: 1fr; } }
+  .sea-photo-wrap { position: relative; min-height: 320px; }
+  .sea-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .sea-text { padding: clamp(40px, 6vw, 88px) clamp(24px, 5vw, 72px); max-width: 640px; }
+  .sea-text h2 { margin-top: 12px; }
+  .sea-text p:not(.mono-label) { margin-top: 18px; font-size: 1.06rem; line-height: 1.65; }
+  .sea-text code { font-family: var(--font-mono); font-size: .9em; padding: .08em .32em; border-radius: var(--r-xs); }
+  .sea-link { display: inline-block; margin-top: 24px; color: var(--surface); font-weight: 500; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(255, 255, 255, .4); }
+  .sea-link:hover { text-decoration-color: var(--surface); }
+
+  .choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .choice-grid { grid-template-columns: 1fr; } }
+  .pills { list-style: none; padding: 0; margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .pills li { padding: 6px 14px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-size: .93rem; }
+  .ticks { list-style: none; padding: 0; margin-top: 14px; display: grid; gap: 10px; }
+  .ticks li { position: relative; padding-left: 28px; color: var(--text); }
+  .ticks li::before { content: ""; position: absolute; left: 0; top: .45em; width: 14px; height: 14px; border-radius: 50%; background: var(--ink); }
+  .ticks--open li { color: var(--text-2); }
+  .ticks--open li::before { background: transparent; border: 1.5px solid var(--text-3); }
+
+  .guides { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 760px) { .guides { grid-template-columns: 1fr; } }
+  .guide h3 { font-size: 1.35rem; font-weight: 460; }
+  .guide a h3::after { content: " \2192"; color: var(--blue); }
+  .guide a:hover h3 { color: var(--blue-deep); }
+  .guide p { margin-top: 8px; }
+</style>

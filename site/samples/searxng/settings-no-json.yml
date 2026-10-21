@@ -1,0 +1,6 @@
+# The same settings without the json format, to show the default 403.
+use_default_settings: true
+
+server:
+  secret_key: "change-me-gannet-guide-placeholder-7f3a9c"
+  limiter: false

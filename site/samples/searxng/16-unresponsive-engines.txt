@@ -1,0 +1,11 @@
+$ curl -s 'http://127.0.0.1:8888/search?q=searxng+docker&format=json' | jq '.unresponsive_engines'
+[
+  [
+    "duckduckgo",
+    "CAPTCHA"
+  ],
+  [
+    "wikipedia",
+    "Suspended: too many requests"
+  ]
+]

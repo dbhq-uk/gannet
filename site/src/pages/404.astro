@@ -1,0 +1,41 @@
+---
+import Base from "../layouts/Base.astro";
+import { nav } from "../lib/site";
+import glide from "../assets/photo/glide-1600.webp";
+import { Image } from "astro:assets";
+
+// A real 404 page, so Cloudflare Pages returns a 404 status rather than handing
+// the visitor a styled 200.
+---
+
+<Base
+  title="Not found - gannet"
+  description="That page is not here. This site has five pages: gannet itself and four guides on deep research, search APIs and judging sources."
+  noindex
+>
+  <section class="section nf">
+    <div class="container nf-grid">
+      <div>
+        <p class="kicker">404</p>
+        <h1>That page is not here</h1>
+        <p class="lead">This site has five pages: gannet itself and four guides.</p>
+        <ul class="nf-list" role="list">
+          <li><a href="/">gannet</a></li>
+          {nav.map((n) => <li><a href={n.path}>{n.label}</a></li>)}
+        </ul>
+      </div>
+      <Image src={glide} alt="A gannet gliding over the sea at sunset, past a rocky headland" widths={[800, 1600]} sizes="(max-width: 900px) 100vw, 50vw" class="nf-photo" />
+    </div>
+  </section>
+</Base>
+
+<style>
+  .nf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(24px, 4vw, 56px); align-items: center; }
+  @media (max-width: 900px) { .nf-grid { grid-template-columns: 1fr; } }
+  .nf h1 { margin-top: 10px; }
+  .nf .lead { margin-top: var(--s-4); }
+  .nf-list { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 10px; }
+  .nf-list a { color: var(--blue-deep); font-weight: 500; }
+  .nf-list a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .nf-photo { width: 100%; height: auto; border-radius: var(--r-md); }
+</style>

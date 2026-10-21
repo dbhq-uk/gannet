@@ -1,0 +1,18 @@
+$ python3 agent_tool.py "searxng docker"
+[
+  {
+    "title": "GitHub - searxng/searxng-docker · GitHub",
+    "url": "https://github.com/searxng/searxng-docker",
+    "snippet": "28 Mar 2026 ... Repository navigation · NotificationsYou must be signed in to change notification settings · Fork677 (677) · Star3.3k (3.3k)You must be signed ..."
+  },
+  {
+    "title": "Installation container - SearXNG Documentation (2026.10.17+1c10abe2d)",
+    "url": "https://docs.searxng.org/admin/installation-docker.html",
+    "snippet": "# Create directories for configuration and persistent data $ mkdir -p ./searxng/config/ ./searxng/data/ $ cd ./searxng/ # Run the container $ docker run --name searxng -d \\ -p 8888:8080 \\ -v \"./config"
+  },
+  {
+    "title": "searxng/searxng - Docker Image",
+    "url": "https://hub.docker.com/r/searxng/searxng",
+    "snippet": "searxng/searxng ... SearXNG is a metasearch engine. Users are neither tracked nor profiled. Image. Networking. Security. Web servers. 195. 50M+. OverviewTags ..."
+  }
+]
