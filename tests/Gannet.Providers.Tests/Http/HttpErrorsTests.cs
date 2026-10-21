@@ -53,4 +53,61 @@ public class HttpErrorsTests
         var error = await Assert.ThrowsAsync<ServiceFailedException>(() => HttpErrors.EnsureSuccessAsync(response, "Exa", false, CancellationToken.None));
         Assert.DoesNotContain("sk-12345", error.Message, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Messages_never_include_the_reason_phrase()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.InternalServerError) { ReasonPhrase = "Bad key sk-LEAK123" };
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => HttpErrors.EnsureSuccessAsync(response, "Exa", false, CancellationToken.None));
+        Assert.DoesNotContain("sk-LEAK123", error.Message, StringComparison.Ordinal);
+        Assert.Contains("500", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Retry_after_date_in_the_future_is_a_positive_delay()
+    {
+        var response = Response(HttpStatusCode.TooManyRequests);
+        response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddMinutes(5));
+        var error = await Assert.ThrowsAsync<RateLimitedException>(() => HttpErrors.EnsureSuccessAsync(response, "Tavily", false, CancellationToken.None));
+        Assert.InRange(error.RetryAfter!.Value, TimeSpan.FromMinutes(4), TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
+    public async Task Retry_after_date_in_the_past_is_zero()
+    {
+        var response = Response(HttpStatusCode.TooManyRequests);
+        response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddMinutes(-5));
+        var error = await Assert.ThrowsAsync<RateLimitedException>(() => HttpErrors.EnsureSuccessAsync(response, "Tavily", false, CancellationToken.None));
+        Assert.Equal(TimeSpan.Zero, error.RetryAfter);
+    }
+
+    [Fact]
+    public async Task Missing_retry_after_is_null()
+    {
+        var error = await Assert.ThrowsAsync<RateLimitedException>(() => HttpErrors.EnsureSuccessAsync(Response(HttpStatusCode.TooManyRequests), "Tavily", false, CancellationToken.None));
+        Assert.Null(error.RetryAfter);
+    }
+
+    [Fact]
+    public void Failures_are_a_faulted_task_not_a_synchronous_throw()
+    {
+        var task = HttpErrors.EnsureSuccessAsync(Response(HttpStatusCode.BadGateway), "Brave", false, CancellationToken.None);
+        Assert.True(task.IsFaulted);
+        Assert.IsType<ServiceFailedException>(task.Exception!.InnerException);
+    }
+
+    [Fact]
+    public async Task A_plain_success_passes()
+    {
+        await HttpErrors.EnsureSuccessAsync(Response(HttpStatusCode.OK), "Brave", false, CancellationToken.None);
+        await HttpErrors.EnsureSuccessAsync(Response(HttpStatusCode.NoContent), "Brave", true, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task A_cf_mitigated_header_that_is_not_a_challenge_passes()
+    {
+        var response = Response(HttpStatusCode.OK);
+        response.Headers.Add("cf-mitigated", "something-else");
+        await HttpErrors.EnsureSuccessAsync(response, "Reader", true, CancellationToken.None);
+    }
 }
