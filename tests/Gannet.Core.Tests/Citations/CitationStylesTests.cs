@@ -10,7 +10,7 @@ public class CitationStylesTests
 
     [Theory]
     [InlineData("apa", "Example Title. (n.d.). Retrieved from https://example.com/a")]
-    [InlineData("mla", "\"Example Title\". Web. 05 Oct. 2026. <https://example.com/a>")]
+    [InlineData("mla", "\"Example Title\". Web. 5 Oct. 2026. <https://example.com/a>")]
     [InlineData("chicago", "\"Example Title.\" Accessed October 5, 2026. https://example.com/a.")]
     [InlineData("ieee", "\"Example Title,\" https://example.com/a, accessed Oct. 5, 2026.")]
     public void Formats_match_the_source(string style, string expected)
@@ -34,7 +34,7 @@ public class CitationStylesTests
 
     [Theory]
     [InlineData("apa", "Example Title. (n.d.). Retrieved from https://example.com/a%20b")]
-    [InlineData("mla", "\"Example Title\". Web. 05 Oct. 2026. <https://example.com/a%20b>")]
+    [InlineData("mla", "\"Example Title\". Web. 5 Oct. 2026. <https://example.com/a%20b>")]
     [InlineData("chicago", "\"Example Title.\" Accessed October 5, 2026. https://example.com/a%20b.")]
     [InlineData("ieee", "\"Example Title,\" https://example.com/a%20b, accessed Oct. 5, 2026.")]
     public void An_encoded_space_in_the_address_stays_encoded(string style, string expected)
@@ -44,7 +44,7 @@ public class CitationStylesTests
     }
 
     [Theory]
-    [InlineData("mla", "\"example.com\". Web. 07 Mar. 2026. <https://example.com/a>")]
+    [InlineData("mla", "\"example.com\". Web. 7 Mar. 2026. <https://example.com/a>")]
     [InlineData("chicago", "\"example.com.\" Accessed March 7, 2026. https://example.com/a.")]
     [InlineData("ieee", "\"example.com,\" https://example.com/a, accessed Mar. 7, 2026.")]
     public void An_untitled_source_uses_the_host_and_dates_outside_october_format(string style, string expected)
@@ -86,13 +86,13 @@ public class CitationStylesTests
         var chicago = CitationStyles.Get("chicago").Format(Titled, date);
         var ieee = CitationStyles.Get("ieee").Format(Titled, date);
 
-        Assert.Contains($"Web. 07 {abbreviated} 2026.", mla, StringComparison.Ordinal);
+        Assert.Contains($"Web. 7 {abbreviated} 2026.", mla, StringComparison.Ordinal);
         Assert.Contains($"Accessed {full} 7, 2026.", chicago, StringComparison.Ordinal);
         Assert.Contains($"accessed {abbreviated} 7, 2026.", ieee, StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData("mla", "Web. 05 May 2026.")]
+    [InlineData("mla", "Web. 5 May 2026.")]
     [InlineData("chicago", "Accessed May 5, 2026.")]
     [InlineData("ieee", "accessed May 5, 2026.")]
     public void A_single_digit_day_in_may(string style, string expected)
@@ -108,7 +108,7 @@ public class CitationStylesTests
         {
             CultureInfo.CurrentCulture = new CultureInfo("fr-FR");
             var date = new DateOnly(2026, 9, 9);
-            Assert.Contains("09 Sept. 2026", CitationStyles.Get("mla").Format(Titled, date), StringComparison.Ordinal);
+            Assert.Contains("9 Sept. 2026", CitationStyles.Get("mla").Format(Titled, date), StringComparison.Ordinal);
             Assert.Contains("September 9, 2026", CitationStyles.Get("chicago").Format(Titled, date), StringComparison.Ordinal);
             Assert.Contains("Sept. 9, 2026", CitationStyles.Get("ieee").Format(Titled, date), StringComparison.Ordinal);
         }
