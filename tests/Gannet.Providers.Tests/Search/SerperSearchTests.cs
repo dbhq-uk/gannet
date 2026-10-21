@@ -70,7 +70,7 @@ public class SerperSearchTests
 
     [Theory]
     [InlineData(1, 1)]
-    [InlineData(50, 20)]
+    [InlineData(50, 10)]
     public async Task Max_results_stays_inside_what_serper_is_asked_for(int asked, int sent)
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Json(Fixture));
@@ -178,5 +178,14 @@ public class SerperSearchTests
         Assert.Equal("serper", serper.Type);
         Assert.Equal("serper", serper.Name);
         Assert.False(serper.Terms.MayPersistResults);
+    }
+
+    [Fact]
+    public async Task Invalid_utf8_in_the_error_message_is_a_plain_failure()
+    {
+        byte[] body = [.. "{ \"message\": \"Not enough "u8, 0xFF, 0xFE, .. "\" }"u8];
+        var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new ByteArrayContent(body) });
+
+        await Assert.ThrowsAsync<ServiceFailedException>(() => Serper(handler).SearchAsync("q", 3, CancellationToken.None));
     }
 }

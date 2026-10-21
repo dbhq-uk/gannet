@@ -130,6 +130,10 @@ public class BraveSearchTests
         {
             Assert.IsType<AuthRequiredException>(error);
         }
+        else
+        {
+            Assert.IsType<ServiceFailedException>(error);
+        }
     }
 
     // Brave documents these error codes (error.code) on a 429; QUOTA_LIMITED, USAGE_LIMIT_EXCEEDED and CREDIT_EXHAUSTED are plan limits, not a rate.
@@ -159,5 +163,27 @@ public class BraveSearchTests
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text("<html>slow down</html>", status: HttpStatusCode.TooManyRequests));
         await Assert.ThrowsAsync<RateLimitedException>(() => Brave(handler).SearchAsync("q", 3, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Invalid_utf8_in_the_error_code_is_still_a_rate_limit()
+    {
+        byte[] body = [.. "{ \"error\": { \"code\": \"QUOTA_"u8, 0xFF, 0xFE, .. "\" } }"u8];
+        var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new ByteArrayContent(body) });
+
+        await Assert.ThrowsAsync<RateLimitedException>(() => Brave(handler).SearchAsync("q", 3, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Many_unmatched_angle_brackets_in_a_description_are_handled_in_linear_time()
+    {
+        var description = new string('<', 1_000_000);
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json($$"""{ "web": { "results": [ { "title": "T", "url": "https://t.example/", "description": "{{description}}" } ] } }"""));
+
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var hits = await Brave(handler).SearchAsync("q", 3, CancellationToken.None);
+
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(5), $"took {started.Elapsed}");
+        Assert.Equal(description, Assert.Single(hits).Snippet);
     }
 }

@@ -8,8 +8,10 @@ namespace Gannet.Providers.Search;
 
 internal sealed class SerperSearch(HttpClient http, string name, ServiceOptions options) : SearchProviderBase(http, name, options)
 {
-    // Serper's public pages give no limit for num. Third-party guides give 20 as the cap and examples use 10 and 20, so 20 is the most gannet asks for.
+    // Serper's public pages give no limit for num. Third-party guides give 20 as the cap and examples use 10 and 20. Both numbers are unverified until
+    // a live check, so the clamp is 20 and gannet asks for at most 10 meanwhile.
     private const int MaxResultsAllowed = 20;
+    private const int MaxResultsAsked = 10;
 
     public override string Type => "serper";
 
@@ -24,7 +26,7 @@ internal sealed class SerperSearch(HttpClient http, string name, ServiceOptions 
             return [];
         }
 
-        var request = PostJson("https://google.serper.dev/search", new { q = query, num = Math.Clamp(maxResults, 1, MaxResultsAllowed) });
+        var request = PostJson("https://google.serper.dev/search", new { q = query, num = Math.Min(Math.Clamp(maxResults, 1, MaxResultsAllowed), MaxResultsAsked) });
         request.Headers.Add("X-API-KEY", RequireKey());
         using var json = await SendAsync(request, ct);
         return Take(json.RootElement.Prop("organic").Items().Select(Map), maxResults);
@@ -38,8 +40,7 @@ internal sealed class SerperSearch(HttpClient http, string name, ServiceOptions 
             return false;
         }
 
-        using var body = await ReadErrorBodyAsync(response, ct);
-        return body is not null && body.RootElement.Str("message").Contains("not enough credits", StringComparison.OrdinalIgnoreCase);
+        return await ReadErrorBodyAsync(response, body => body.Str("message").Contains("not enough credits", StringComparison.OrdinalIgnoreCase), ct);
     }
 
     private static SearchHit? Map(JsonElement r)
