@@ -9,6 +9,8 @@ namespace Gannet.Providers.Search;
 
 internal abstract class SearchProviderBase(HttpClient http, string name, ServiceOptions options) : ISearchProvider
 {
+    private const int MaxErrorBodyBytes = 64 * 1024;
+
     protected HttpClient Http { get; } = http;
 
     protected ServiceOptions Options { get; } = options;
@@ -28,6 +30,26 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
     /// <summary>True for a status this service uses for a plan or credit limit, which is a quota error and not a plain failure.</summary>
     protected virtual bool IsQuotaStatus(HttpStatusCode status) => false;
 
+    /// <summary>
+    /// Called before the standard status mapping. The default is <see cref="IsQuotaStatus"/>. Override it for a service that signals a plan or credit
+    /// limit in the body of a status it also uses for something else. Read the body with <see cref="ReadErrorBodyAsync"/> and never copy it into a message.
+    /// </summary>
+    protected virtual Task<bool> IsQuotaResponseAsync(HttpResponseMessage response, CancellationToken ct) =>
+        Task.FromResult(IsQuotaStatus(response.StatusCode));
+
+    /// <summary>Reads a small JSON error body to classify it. Returns null for a body that is missing, too large or not JSON.</summary>
+    protected async Task<JsonDocument?> ReadErrorBodyAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            return await JsonRead.ParseAsync(response, DisplayName, MaxErrorBodyBytes, ct);
+        }
+        catch (ServiceFailedException)
+        {
+            return null;
+        }
+    }
+
     protected string RequireKey() =>
         string.IsNullOrWhiteSpace(Options.ApiKey)
             ? throw new AuthRequiredException(DisplayName, $"{DisplayName} needs an API key: set Gannet:Search:{Name}:ApiKey.")
@@ -41,7 +63,7 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
         using (request)
         {
             using var response = await Http.SendAsync(request, ct);
-            if (IsQuotaStatus(response.StatusCode))
+            if (await IsQuotaResponseAsync(response, ct))
             {
                 throw new QuotaExhaustedException(DisplayName, $"{DisplayName} says the plan or credit limit is reached ({(int)response.StatusCode}).");
             }
