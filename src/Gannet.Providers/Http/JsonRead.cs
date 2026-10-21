@@ -43,10 +43,10 @@ internal static class JsonRead
         }
     }
 
-    /// <summary>Reads a text body (UTF-8) under the same cap as <see cref="ParseAsync(HttpResponseMessage, string, CancellationToken)"/>.</summary>
-    public static async Task<string> ReadTextAsync(HttpResponseMessage response, string service, CancellationToken ct)
+    /// <summary>Reads a text body (UTF-8) under a cap the caller chooses: a Content-Length pre-check, then a counted read.</summary>
+    public static async Task<string> ReadTextAsync(HttpResponseMessage response, string service, int maxBytes, CancellationToken ct)
     {
-        using var buffer = await ReadCappedAsync(response, service, MaxBodyBytes, ct);
+        using var buffer = await ReadCappedAsync(response, service, maxBytes, ct);
         return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
     }
 

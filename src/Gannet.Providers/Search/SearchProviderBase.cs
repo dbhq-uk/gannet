@@ -66,7 +66,8 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
     {
         using (request)
         {
-            using var response = await Http.SendAsync(request, ct);
+            // Headers first, so the body cap in JsonRead applies before anything is buffered.
+            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             if (await IsQuotaResponseAsync(response, ct))
             {
                 throw new QuotaExhaustedException(DisplayName, $"{DisplayName} says the plan or credit limit is reached ({(int)response.StatusCode}).");

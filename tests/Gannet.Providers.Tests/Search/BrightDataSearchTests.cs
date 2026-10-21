@@ -159,22 +159,38 @@ public class BrightDataSearchTests
         Assert.DoesNotContain("bd-secret", error.Message, StringComparison.Ordinal);
     }
 
-    // Documented in the proxy error catalogue (client_10020): a suspended account, which Bright Data does automatically when the balance goes negative.
-    // On the Direct API the outer status can be 200, so the header is the signal, not the status.
+    // Documented in the proxy error catalogue: client_10020 "Account is suspended" (automatic when the balance goes negative) and client_10100
+    // "Zone has reached usage limit". On the Direct API the outer status can be 200, so the headers are the signal, not the status. The code is in
+    // x-brd-err-code and, in the RFC 9209 Proxy-Status header, in details="<code>: ...".
     [Theory]
-    [InlineData(HttpStatusCode.OK)]
-    [InlineData(HttpStatusCode.ProxyAuthenticationRequired)]
-    public async Task A_suspended_account_is_a_quota_error(HttpStatusCode status)
+    [InlineData(HttpStatusCode.OK, "client_10020", false)]
+    [InlineData(HttpStatusCode.ProxyAuthenticationRequired, "client_10020", false)]
+    [InlineData(HttpStatusCode.OK, "client_10100", false)]
+    [InlineData(HttpStatusCode.BadGateway, "client_10100", false)]
+    [InlineData(HttpStatusCode.OK, "client_10020", true)]
+    [InlineData(HttpStatusCode.ProxyAuthenticationRequired, "client_10020", true)]
+    [InlineData(HttpStatusCode.BadGateway, "client_10100", true)]
+    [InlineData(HttpStatusCode.OK, "client_10100", true)]
+    public async Task A_suspended_account_or_a_zone_usage_limit_is_a_quota_error(HttpStatusCode status, string code, bool proxyStatus)
     {
         var handler = new StubHttpHandler(_ =>
         {
-            var response = StubHttpHandler.Text("Account is suspended bd-secret", "text/plain", status);
-            response.Headers.Add("x-brd-err-code", "client_10020");
+            var response = StubHttpHandler.Text("Zone has reached usage limit bd-secret", "text/plain", status);
+            if (proxyStatus)
+            {
+                response.Headers.TryAddWithoutValidation("Proxy-Status", $"brd.superproxy.io; received-status=502; error=\"http_request_denied\"; details=\"{code}: text bd-secret\"");
+            }
+            else
+            {
+                response.Headers.Add("x-brd-err-code", code);
+            }
+
             return response;
         });
         var error = await Assert.ThrowsAsync<QuotaExhaustedException>(() => Create(handler, "bd-secret").SearchAsync("q", 3, CancellationToken.None));
 
         Assert.DoesNotContain("bd-secret", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("usage limit", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("suspended", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -185,6 +201,19 @@ public class BrightDataSearchTests
         {
             var response = StubHttpHandler.Text("denied", "text/plain", HttpStatusCode.ProxyAuthenticationRequired);
             response.Headers.Add("x-brd-err-code", "client_10000");
+            return response;
+        });
+
+        await Assert.ThrowsAsync<ServiceFailedException>(() => Create(handler).SearchAsync("q", 3, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Another_proxy_status_code_is_not_a_quota_error()
+    {
+        var handler = new StubHttpHandler(_ =>
+        {
+            var response = StubHttpHandler.Text("denied", "text/plain", HttpStatusCode.ProxyAuthenticationRequired);
+            response.Headers.TryAddWithoutValidation("Proxy-Status", "brd.superproxy.io; received-status=407; error=\"http_request_denied\"; details=\"client_10000: Invalid authentication, and a mention of client_10100\"");
             return response;
         });
 
