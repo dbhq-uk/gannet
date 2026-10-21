@@ -41,9 +41,9 @@ public static class CitationStyles
     private static string Abbreviated(DateOnly date) =>
         string.Create(CultureInfo.InvariantCulture, $"{AbbreviatedMonths[date.Month - 1]} {date.Day}, {date.Year}");
 
-    // MLA: "07 Mar. 2026".
+    // MLA: "7 Mar. 2026".
     private static string DayMonthYear(DateOnly date) =>
-        string.Create(CultureInfo.InvariantCulture, $"{date.Day:00} {AbbreviatedMonths[date.Month - 1]} {date.Year}");
+        string.Create(CultureInfo.InvariantCulture, $"{date.Day} {AbbreviatedMonths[date.Month - 1]} {date.Year}");
 
     private sealed class Apa : ICitationStyle
     {
