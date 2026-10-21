@@ -160,7 +160,7 @@ public sealed class RunStore(IBlobStore blobs, TimeProvider time) : IRunStore
             return index;
         }
 
-        // The index is damaged: rebuild it once, under the lock, and read what the rebuild wrote.
+        // The index is missing or damaged: rebuild it once, under the lock, and read what the rebuild wrote.
         await indexLock.WaitAsync(ct);
         try
         {
@@ -172,20 +172,20 @@ public sealed class RunStore(IBlobStore blobs, TimeProvider time) : IRunStore
         }
     }
 
-    /// <summary>Null when the stored index cannot be parsed. Call with the lock held to act on that.</summary>
+    /// <summary>Null when the stored index is missing or cannot be parsed. Call with the lock held to act on that.</summary>
     private async Task<List<RunSummary>?> TryReadIndexAsync(CancellationToken ct)
     {
         var bytes = await blobs.GetAsync(IndexKey, ct);
         if (bytes is null)
         {
-            return [];
+            return null;
         }
 
         try
         {
             return JsonSerializer.Deserialize<List<RunSummary>>(bytes, GannetJson.Options)?.Where(s => s is not null).ToList() ?? [];
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             return null;
         }
@@ -204,19 +204,24 @@ public sealed class RunStore(IBlobStore blobs, TimeProvider time) : IRunStore
         foreach (var key in await blobs.ListAsync("runs/", ct))
         {
             var parts = key.Split('/');
-            if (parts.Length != 3 || parts[2] != "run.json" || !RunIds.IsValid(parts[1]) || await blobs.GetAsync(key, ct) is not { } bytes)
+            if (parts.Length != 3 || parts[2] != "run.json" || !RunIds.IsValid(parts[1]))
             {
                 continue;
             }
 
             try
             {
+                if (await blobs.GetAsync(key, ct) is not { } bytes)
+                {
+                    continue;
+                }
+
                 if (JsonSerializer.Deserialize<RunRecord>(bytes, GannetJson.Options) is { } run && SameId(run.Id, parts[1]))
                 {
                     summaries.Add(RunSummary.From(run));
                 }
             }
-            catch (Exception ex) when (ex is JsonException or NotSupportedException)
+            catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
             {
                 // An unreadable record is left out of the index rather than failing the rebuild.
             }
