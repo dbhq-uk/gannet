@@ -16,7 +16,7 @@ public sealed class LocalDiskBlobStore(string root) : IBlobStore
         }
         catch
         {
-            File.Delete(temp);
+            TryDelete(temp);
             throw;
         }
     }
@@ -24,7 +24,14 @@ public sealed class LocalDiskBlobStore(string root) : IBlobStore
     public async Task<byte[]?> GetAsync(string key, CancellationToken ct)
     {
         var path = PathFor(key);
-        return File.Exists(path) ? await File.ReadAllBytesAsync(path, ct) : null;
+        try
+        {
+            return await File.ReadAllBytesAsync(path, ct);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return null;
+        }
     }
 
     public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct)
@@ -54,12 +61,42 @@ public sealed class LocalDiskBlobStore(string root) : IBlobStore
         return Task.CompletedTask;
     }
 
+    /// <summary>Cleanup must not hide the error that made it necessary.</summary>
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static bool IsLink(string path)
+    {
+        var info = new FileInfo(path);
+        return info.LinkTarget is not null || ((int)info.Attributes != -1 && info.Attributes.HasFlag(FileAttributes.ReparsePoint));
+    }
+
     private string PathFor(string key)
     {
-        var path = Path.GetFullPath(Path.Combine(root, BlobKeys.Validate(key).Replace('/', Path.DirectorySeparatorChar)));
+        var segments = BlobKeys.Validate(key).Split('/');
+        var path = Path.GetFullPath(Path.Combine(root, Path.Combine(segments)));
         if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
         {
             throw new ArgumentException($"Storage key '{key}' resolves outside the storage root.", nameof(key));
+        }
+
+        // A link anywhere under the root could point outside it, so none is followed.
+        var current = root;
+        foreach (var segment in segments)
+        {
+            current = Path.Combine(current, segment);
+            if (IsLink(current))
+            {
+                throw new ArgumentException($"Storage key '{key}' passes through a link.", nameof(key));
+            }
         }
 
         return path;

@@ -24,8 +24,16 @@ public sealed class RunStore(IBlobStore blobs, TimeProvider time) : IRunStore
             throw new ArgumentException($"Invalid run ID '{run.Id}'.", nameof(run));
         }
 
-        await blobs.PutAsync(RunKey(run.Id), JsonSerializer.SerializeToUtf8Bytes(run, GannetJson.Options), ct);
-        await UpdateIndexAsync(index => index.Where(s => s.Id != run.Id).Append(RunSummary.From(run)), ct);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(run, GannetJson.Options);
+
+        // The record and its index entry change under one lock, so two saves of one run cannot leave them disagreeing.
+        await UpdateIndexAsync(
+            async index =>
+            {
+                await blobs.PutAsync(RunKey(run.Id), bytes, ct);
+                return index.Where(s => !SameId(s.Id, run.Id)).Append(RunSummary.From(run));
+            },
+            ct);
     }
 
     public async Task<RunRecord?> GetAsync(string id, CancellationToken ct)
@@ -42,7 +50,7 @@ public sealed class RunStore(IBlobStore blobs, TimeProvider time) : IRunStore
     public async Task<IReadOnlyList<RunSummary>> ListAsync(string? owner, CancellationToken ct)
     {
         var index = await ReadIndexAsync(ct);
-        return [.. index.Where(s => owner is null || s.Owner == owner).OrderByDescending(s => s.CreatedAt)];
+        return [.. index.Where(s => owner is null || SameOwner(s.Owner, owner)).OrderByDescending(s => s.CreatedAt)];
     }
 
     public async Task SaveEventsAsync(string id, IReadOnlyList<RunEvent> events, CancellationToken ct)
@@ -100,12 +108,17 @@ public sealed class RunStore(IBlobStore blobs, TimeProvider time) : IRunStore
             return;
         }
 
-        foreach (var key in (await blobs.ListAsync($"runs/{id}/", ct)).Concat(await blobs.ListAsync($"checkpoints/{id}/", ct)))
-        {
-            await blobs.DeleteAsync(key, ct);
-        }
+        await UpdateIndexAsync(
+            async index =>
+            {
+                foreach (var key in (await blobs.ListAsync($"runs/{id}/", ct)).Concat(await blobs.ListAsync($"checkpoints/{id}/", ct)))
+                {
+                    await blobs.DeleteAsync(key, ct);
+                }
 
-        await UpdateIndexAsync(index => index.Where(s => s.Id != id), ct);
+                return index.Where(s => !SameId(s.Id, id));
+            },
+            ct);
     }
 
     public async Task<RunSummary?> FindPreviousAsync(string owner, string question, CancellationToken ct)
@@ -113,7 +126,7 @@ public sealed class RunStore(IBlobStore blobs, TimeProvider time) : IRunStore
         var normalised = QuestionNormaliser.Normalise(question);
         var index = await ReadIndexAsync(ct);
         return index
-            .Where(s => s.Owner == owner && s.Status == RunStatus.Completed && s.NormalisedQuestion == normalised)
+            .Where(s => SameOwner(s.Owner, owner) && s.Status == RunStatus.Completed && QuestionNormaliser.Normalise(s.Question) == normalised)
             .OrderByDescending(s => s.CreatedAt)
             .FirstOrDefault();
     }
@@ -122,19 +135,106 @@ public sealed class RunStore(IBlobStore blobs, TimeProvider time) : IRunStore
 
     private static string EventsKey(string id) => $"runs/{id}/events.jsonl";
 
-    private async Task<List<RunSummary>> ReadIndexAsync(CancellationToken ct)
-    {
-        var bytes = await blobs.GetAsync(IndexKey, ct);
-        return bytes is null ? [] : JsonSerializer.Deserialize<List<RunSummary>>(bytes, GannetJson.Options) ?? [];
-    }
+    private static bool SameId(string a, string b) => string.Equals(a, b, StringComparison.Ordinal);
 
-    private async Task UpdateIndexAsync(Func<IEnumerable<RunSummary>, IEnumerable<RunSummary>> change, CancellationToken ct)
+    private static bool SameOwner(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Rebuilds the index from the run records under runs/. Records that cannot be read are skipped.</summary>
+    public async Task RebuildIndexAsync(CancellationToken ct)
     {
         await indexLock.WaitAsync(ct);
         try
         {
-            var updated = change(await ReadIndexAsync(ct)).ToList();
-            await blobs.PutAsync(IndexKey, JsonSerializer.SerializeToUtf8Bytes(updated, GannetJson.Options), ct);
+            await WriteIndexAsync(await ScanRunsAsync(ct), ct);
+        }
+        finally
+        {
+            indexLock.Release();
+        }
+    }
+
+    private async Task<List<RunSummary>> ReadIndexAsync(CancellationToken ct)
+    {
+        if (await TryReadIndexAsync(ct) is { } index)
+        {
+            return index;
+        }
+
+        // The index is damaged: rebuild it once, under the lock, and read what the rebuild wrote.
+        await indexLock.WaitAsync(ct);
+        try
+        {
+            return await TryReadIndexAsync(ct) ?? await RebuildLockedAsync(ct);
+        }
+        finally
+        {
+            indexLock.Release();
+        }
+    }
+
+    /// <summary>Null when the stored index cannot be parsed. Call with the lock held to act on that.</summary>
+    private async Task<List<RunSummary>?> TryReadIndexAsync(CancellationToken ct)
+    {
+        var bytes = await blobs.GetAsync(IndexKey, ct);
+        if (bytes is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<RunSummary>>(bytes, GannetJson.Options)?.Where(s => s is not null).ToList() ?? [];
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private async Task<List<RunSummary>> RebuildLockedAsync(CancellationToken ct)
+    {
+        var rebuilt = await ScanRunsAsync(ct);
+        await WriteIndexAsync(rebuilt, ct);
+        return rebuilt;
+    }
+
+    private async Task<List<RunSummary>> ScanRunsAsync(CancellationToken ct)
+    {
+        var summaries = new List<RunSummary>();
+        foreach (var key in await blobs.ListAsync("runs/", ct))
+        {
+            var parts = key.Split('/');
+            if (parts.Length != 3 || parts[2] != "run.json" || !RunIds.IsValid(parts[1]) || await blobs.GetAsync(key, ct) is not { } bytes)
+            {
+                continue;
+            }
+
+            try
+            {
+                if (JsonSerializer.Deserialize<RunRecord>(bytes, GannetJson.Options) is { } run && SameId(run.Id, parts[1]))
+                {
+                    summaries.Add(RunSummary.From(run));
+                }
+            }
+            catch (Exception ex) when (ex is JsonException or NotSupportedException)
+            {
+                // An unreadable record is left out of the index rather than failing the rebuild.
+            }
+        }
+
+        return summaries;
+    }
+
+    private Task WriteIndexAsync(List<RunSummary> index, CancellationToken ct) =>
+        blobs.PutAsync(IndexKey, JsonSerializer.SerializeToUtf8Bytes(index, GannetJson.Options), ct);
+
+    private async Task UpdateIndexAsync(Func<List<RunSummary>, Task<IEnumerable<RunSummary>>> change, CancellationToken ct)
+    {
+        await indexLock.WaitAsync(ct);
+        try
+        {
+            var current = await TryReadIndexAsync(ct) ?? await RebuildLockedAsync(ct);
+            await WriteIndexAsync((await change(current)).ToList(), ct);
         }
         finally
         {

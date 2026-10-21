@@ -19,11 +19,14 @@ public sealed class InMemoryBlobStore : IBlobStore
     public Task<byte[]?> GetAsync(string key, CancellationToken ct)
     {
         Interlocked.Increment(ref reads);
-        return Task.FromResult(items.TryGetValue(BlobKeys.Validate(key), out var value) ? value : null);
+        return Task.FromResult(items.TryGetValue(BlobKeys.Validate(key), out var value) ? value.ToArray() : null);
     }
 
-    public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<string>>([.. items.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).Order(StringComparer.Ordinal)]);
+    public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct)
+    {
+        BlobKeys.ValidatePrefix(prefix);
+        return Task.FromResult<IReadOnlyList<string>>([.. items.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).Order(StringComparer.Ordinal)]);
+    }
 
     public Task DeleteAsync(string key, CancellationToken ct)
     {
