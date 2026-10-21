@@ -1,0 +1,10 @@
+@page "/"
+
+<h1>gannet hosting check</h1>
+<p>If the number goes up when you press the button, Blazor's live connection works through this host.</p>
+<p>Count: <strong>@count</strong></p>
+<button type="button" @onclick="() => count++">Add one</button>
+
+@code {
+    private int count;
+}

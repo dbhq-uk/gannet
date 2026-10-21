@@ -4,6 +4,7 @@
     <Project Path="src/Gannet.Core/Gannet.Core.csproj" />
     <Project Path="src/Gannet.Providers/Gannet.Providers.csproj" />
     <Project Path="src/Gannet.Research/Gannet.Research.csproj" />
+    <Project Path="src/Gannet.Web/Gannet.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Gannet.Cli.Tests/Gannet.Cli.Tests.csproj" />
@@ -11,5 +12,6 @@
     <Project Path="tests/Gannet.Providers.Tests/Gannet.Providers.Tests.csproj" />
     <Project Path="tests/Gannet.Research.Tests/Gannet.Research.Tests.csproj" />
     <Project Path="tests/Gannet.TestSupport/Gannet.TestSupport.csproj" />
+    <Project Path="tests/Gannet.Web.Tests/Gannet.Web.Tests.csproj" />
   </Folder>
 </Solution>
