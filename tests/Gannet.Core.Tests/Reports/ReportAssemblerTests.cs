@@ -161,16 +161,34 @@ public class ReportAssemblerTests
 
     private static readonly DateOnly Accessed = new(2026, 10, 21);
 
-    [Fact]
-    public void A_citation_cannot_become_a_link_definition_anywhere_in_the_pipeline()
+    [Theory]
+    [InlineData("[S1]: https://evil.example/q")]
+    [InlineData("   [S1]: https://evil.example/q")]
+    [InlineData("- [S1]: https://evil.example/q")]
+    [InlineData("1. [S1]: https://evil.example/q")]
+    [InlineData("1) [S1]: https://evil.example/q")]
+    [InlineData("* [S1]: https://evil.example/q")]
+    [InlineData("+ [S1]: https://evil.example/q")]
+    [InlineData("> [S1]: https://evil.example/q")]
+    [InlineData("> - [S1]: https://evil.example/q")]
+    [InlineData("[S99][S1]: https://evil.example/q")]
+    public void A_citation_cannot_become_a_link_definition_anywhere_in_the_pipeline(string definition)
     {
-        var checkedSection = CitationChecker.Check("Real claim [S1].\n\n[S1]: https://attacker.example/x\n\n   [S2]: https://attacker.example/y\n\nEnd.", new HashSet<SourceId> { new(1), new(2) });
+        var checkedSection = CitationChecker.Check($"Claim [S1].\n\n{definition}\n\nEnd [S2].", new HashSet<SourceId> { new(1), new(2) });
         var report = ReportAssembler.Assemble("Q", Plan, [new("Background", checkedSection.Markdown)], Sources, CitationStyles.Get("apa"), Accessed);
         var html = ReportExporters.Get("html").Export(report.Markdown, "Q");
 
-        Assert.DoesNotContain("attacker.example", report.Markdown, StringComparison.Ordinal);
-        Assert.DoesNotContain("attacker.example", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("href=\"https://attacker", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("evil.example", report.Markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("evil.example", html, StringComparison.Ordinal);
+        Assert.Contains("<p>Claim [1].</p>", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_definition_line_keeps_its_prose_through_the_pipeline()
+    {
+        var checkedSection = CitationChecker.Check("- [S1]: the regulator said so [S2].", new HashSet<SourceId> { new(1), new(2) });
+        var report = ReportAssembler.Assemble("Q", Plan, [new("Background", checkedSection.Markdown)], Sources, CitationStyles.Get("apa"), Accessed);
+        Assert.Contains("- the regulator said so [1].", report.Markdown, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -227,5 +245,27 @@ public class ReportAssemblerTests
 
         var many = ReportAssembler.Assemble("Q", Plan, [new("A", "Text [S1]."), new("B", "Text [S2]."), new("C", "Text.")], Sources, CitationStyles.Get("apa"), Accessed);
         Assert.Contains("This report draws on 2 sources across 3 sections.\n", many.Markdown, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("- item\n  ```py\n  code")]
+    [InlineData("1. item\n   ~~~\n   code")]
+    [InlineData("- item\n\n  ````\n  code\n  ```")]
+    [InlineData("> quote\n> ```\n> code")]
+    public void An_unclosed_fence_inside_a_list_item_is_closed_in_the_same_container(string body)
+    {
+        ReportSection[] sections = [new("Background", body), new("Findings", "Beta [S2].")];
+        var report = ReportAssembler.Assemble("Q", Plan, sections, Sources, CitationStyles.Get("apa"), Accessed);
+        var html = ReportExporters.Get("html").Export(report.Markdown, "Q");
+
+        Assert.Contains("<h2>Findings</h2>", html, StringComparison.Ordinal);
+        Assert.Contains("<h2>References</h2>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<code>code\n\n## Findings", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("## Findings", html, StringComparison.Ordinal);
+
+        // Nothing after the first </pre> may be inside another <pre>.
+        var afterCode = html[(html.IndexOf("</pre>", StringComparison.Ordinal) + "</pre>".Length)..];
+        Assert.DoesNotContain("<pre>", afterCode, StringComparison.Ordinal);
+        Assert.Contains("<h2>Findings</h2>", afterCode, StringComparison.Ordinal);
     }
 }

@@ -2,7 +2,8 @@ namespace Gannet.Core.Citations;
 
 /// <summary>
 /// A half-open range of characters in a string. <paramref name="Fenced"/> is true for a fenced code block, false for an inline code span.
-/// <paramref name="MissingClose"/> is, for a fenced block the text ended inside, the fence that would close it; otherwise null.
+/// <paramref name="MissingClose"/> is, for a fenced block the text ended inside, the fence that would close it, with the
+/// opening line's indentation so that it closes inside the same list item; otherwise null.
 /// </summary>
 internal readonly record struct TextRange(int Start, int End, bool Fenced = false, string? MissingClose = null);
 
@@ -17,7 +18,7 @@ internal static class MarkdownCode
     private const int MaxFenceIndent = 3;
     private const int MinFenceLength = 3;
 
-    private readonly record struct Fence(char Marker, int Length);
+    private readonly record struct Fence(char Marker, int Length, int Indent);
 
     private readonly record struct BacktickRun(int Start, int Length, int Paragraph);
 
@@ -67,7 +68,7 @@ internal static class MarkdownCode
 
         if (open is { } unclosed)
         {
-            ranges.Add(new TextRange(fenceStart, text.Length, Fenced: true, MissingClose: new string(unclosed.Marker, unclosed.Length)));
+            ranges.Add(new TextRange(fenceStart, text.Length, Fenced: true, MissingClose: new string(' ', unclosed.Indent) + new string(unclosed.Marker, unclosed.Length)));
         }
 
         AddSpans(runs, ranges);
@@ -115,7 +116,7 @@ internal static class MarkdownCode
             return false;
         }
 
-        fence = new Fence(marker, length);
+        fence = new Fence(marker, length, indent);
         return true;
     }
 
