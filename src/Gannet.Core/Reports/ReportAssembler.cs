@@ -21,19 +21,31 @@ public static partial class ReportAssembler
     [GeneratedRegex(@"^#{1,2}\s", RegexOptions.Multiline)]
     private static partial Regex TopHeading();
 
+    [GeneratedRegex(@"^#{1,6}(\s|$)")]
+    private static partial Regex MarkdownHeading();
+
+    [GeneratedRegex(@"^ {0,3}([-*_])( *\1){2,} *$")]
+    private static partial Regex ThematicBreak();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Whitespace();
+
+    [GeneratedRegex(@"(^|\s)#+$")]
+    private static partial Regex ClosingHashes();
+
     public static Report Assemble(string question, ResearchPlan plan, IReadOnlyList<ReportSection> checkedSections, IReadOnlyList<Source> sources, ICitationStyle style, DateOnly accessed)
     {
-        var cleaned = checkedSections.Select(s => s with { Markdown = Clean(s.Title, s.Markdown) }).ToList();
+        var cleaned = checkedSections.Select(s => FlattenSection(s)).ToList();
         var coverage = Coverage(cleaned.Select(s => s.Markdown));
         var numbered = CitationNumberer.Number(cleaned, sources, style, accessed);
 
         var md = new StringBuilder();
-        md.Append("# ").Append(question.Trim()).Append("\n\n");
+        md.Append("# ").Append(HeadingText(question)).Append("\n\n");
         md.Append(CultureInfo.InvariantCulture, $"This report draws on {numbered.References.Count} sources across {numbered.Sections.Count} sections.\n\n");
         md.Append("## Research objectives\n\n");
         for (var i = 0; i < plan.Objectives.Count; i++)
         {
-            md.Append(CultureInfo.InvariantCulture, $"{i + 1}. {plan.Objectives[i]}\n");
+            md.Append(CultureInfo.InvariantCulture, $"{i + 1}. {OneLine(plan.Objectives[i])}\n");
         }
 
         md.Append('\n');
@@ -63,6 +75,18 @@ public static partial class ReportAssembler
     /// and <see cref="CitationNumberer"/> read it: a fenced block is not a paragraph, and a citation inside an
     /// inline code span does not count.
     /// </summary>
+    private static ReportSection FlattenSection(ReportSection section)
+    {
+        var title = OneLine(section.Title);
+        return new ReportSection(title, Clean(title, section.Markdown));
+    }
+
+    /// <summary>Collapses every run of whitespace, newlines included, to one space and trims the ends.</summary>
+    private static string OneLine(string text) => Whitespace().Replace(text, " ").Trim();
+
+    /// <summary>One line of heading text. A closing run of # (a space and then hashes, as in CommonMark) is dropped.</summary>
+    private static string HeadingText(string text) => ClosingHashes().Replace(OneLine(text), string.Empty).TrimEnd();
+
     public static double Coverage(IEnumerable<string> checkedMarkdown)
     {
         int paragraphs = 0, covered = 0;
@@ -71,7 +95,7 @@ public static partial class ReportAssembler
             foreach (var block in BlankLine().Split(MaskCode(markdown.ReplaceLineEndings("\n"))))
             {
                 var trimmed = block.Trim();
-                if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+                if (trimmed.Length == 0 || MarkdownHeading().IsMatch(trimmed) || ThematicBreak().IsMatch(trimmed))
                 {
                     continue;
                 }
@@ -132,6 +156,25 @@ public static partial class ReportAssembler
             text = firstLineEnd < 0 ? string.Empty : text[(firstLineEnd + 1)..].Trim();
         }
 
-        return TopHeading().Replace(text, "### ");
+        return DemoteOutsideFences(text);
+    }
+
+    /// <summary>Demotes # and ## headings to ### in the prose, and copies fenced code blocks through verbatim.</summary>
+    private static string DemoteOutsideFences(string text)
+    {
+        var result = new StringBuilder(text.Length);
+        var last = 0;
+        foreach (var code in MarkdownCode.Find(text))
+        {
+            if (!code.Fenced)
+            {
+                continue;
+            }
+
+            result.Append(TopHeading().Replace(text[last..code.Start], "### ")).Append(text, code.Start, code.End - code.Start);
+            last = code.End;
+        }
+
+        return result.Append(TopHeading().Replace(text[last..], "### ")).ToString();
     }
 }
