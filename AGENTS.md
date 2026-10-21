@@ -24,6 +24,8 @@ deploy/cloudflare      the Worker and Container config for a Cloudflare deployme
 2. **No search or reader result text is ever written to disk.** Page text lives in `RunContext.Pages` for one run. Checkpoints, run records and event logs carry metadata and findings only. Some providers' terms forbid storing results (Parallel Customer Terms s.2(c)(xi)).
 3. **Executor IDs never change.** Checkpoint resume matches executors by ID (`ExecutorIds`). Renaming one breaks every interrupted run.
 4. **Keys never leave configuration.**
+5. **Event type names never change.** Saved event logs are read by their `type` value; a renamed type disappears from old runs.
+   Never add a `required` member to `RunRecord`, `ResearchRequest` or `RunSummary`, because old saved runs would fail to read.
 
 ## Commands
 
