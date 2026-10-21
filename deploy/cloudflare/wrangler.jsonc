@@ -6,6 +6,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": false,
+  // A preview URL on workers.dev would bypass Cloudflare Access, so keep these off explicitly.
+  "preview_urls": false,
   "containers": [
     {
       "class_name": "GannetContainer",

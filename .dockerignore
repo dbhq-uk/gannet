@@ -5,3 +5,6 @@
 .github
 deploy/cloudflare/.wrangler
 data
+.env
+**/.env
+.superpowers
