@@ -466,4 +466,15 @@ public class RunStoreTests
 
         public Task DeleteAsync(string key, CancellationToken ct) => inner.DeleteAsync(key, ct);
     }
+
+    [Theory]
+    [InlineData("{ broken")]
+    [InlineData("[1, 2]")]
+    [InlineData("{\"id\": 5}")]
+    public async Task A_damaged_run_file_reads_as_null(string json)
+    {
+        var id = RunIds.New();
+        await blobs.PutAsync($"runs/{id}/run.json", Encoding.UTF8.GetBytes(json), CancellationToken.None);
+        Assert.Null(await Store().GetAsync(id, CancellationToken.None));
+    }
 }

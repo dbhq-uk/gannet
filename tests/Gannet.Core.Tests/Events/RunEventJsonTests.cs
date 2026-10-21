@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Gannet.Core.Domain;
 using Gannet.Core.Events;
 using Gannet.Core.Json;
@@ -49,5 +50,42 @@ public class RunEventJsonTests
         Assert.Contains("\"type\":\"chat-entry\"", json, StringComparison.Ordinal);
         Assert.Contains("\"lane\":\"search\"", json, StringComparison.Ordinal);
         Assert.Contains("\"kind\":\"tool-call\"", json, StringComparison.Ordinal);
+    }
+
+    // Saved event logs are read by their type value, so these names are a persisted format and must never change.
+    [Fact]
+    public void Event_type_names_are_pinned()
+    {
+        var names = typeof(RunEvent)
+            .GetCustomAttributes(typeof(JsonDerivedTypeAttribute), inherit: false)
+            .Cast<JsonDerivedTypeAttribute>()
+            .Select(a => (string)a.TypeDiscriminator!)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        string[] expected =
+        [
+            "chat-entry",
+            "chat-entry-live",
+            "citation-removed",
+            "findings-extracted",
+            "gap-checked",
+            "model-usage",
+            "page-read",
+            "page-read-failed",
+            "page-read-started",
+            "plan-ready",
+            "report-ready",
+            "run-finished",
+            "run-started",
+            "search-failed",
+            "search-results",
+            "search-started",
+            "section-delta",
+            "section-started",
+            "section-written",
+            "source-scored",
+        ];
+        Assert.Equal(expected, names);
     }
 }

@@ -8,7 +8,8 @@ public interface ITransientEvent;
 
 /// <summary>
 /// Something that happened in a run. The UI timeline, the CLI progress lines, the API's event stream and the
-/// saved event log (used to replay a run) are all built from these. No event carries page text or snippets.
+/// saved event log (used to replay a run) are all built from these. Only the transient events (<see cref="ChatEntryLive"/>
+/// and <see cref="SectionDelta"/>) carry page or model text, and they are never saved.
 /// </summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(RunStarted), "run-started")]

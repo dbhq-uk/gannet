@@ -312,4 +312,13 @@ public partial class ReportExportersTests
 
         return count;
     }
+
+    [Theory]
+    [InlineData("A [1][2][3].")]
+    [InlineData("[2][1]")]
+    [InlineData("A [1], [2] and [3].")]
+    public void Text_export_keeps_every_bracket_of_adjacent_citations(string markdown)
+    {
+        Assert.Equal(markdown + "\n", ReportExporters.Get("txt").Export(markdown, "T"));
+    }
 }
