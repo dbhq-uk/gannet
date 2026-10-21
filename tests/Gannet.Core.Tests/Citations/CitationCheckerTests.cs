@@ -248,13 +248,24 @@ public class CitationCheckerTests
         Assert.Equal("A.", CitationChecker.Check("A " + citation + ".", Known(3)).Markdown);
     }
 
-    // A citation at the start of a line followed by a colon would become a Markdown link reference definition.
+    // A citation at the start of a line (behind any list or quote markers) followed by a colon would become a
+    // Markdown link reference definition once numbered. Only the group and its colon are removed; the rest stays.
     [Theory]
-    [InlineData("[S1]: https://attacker.example/x", "")]
-    [InlineData("   [S1]: https://attacker.example/x", "")]
-    [InlineData("[S99]: https://attacker.example/x", "")]
-    [InlineData("[S99][S1]: https://attacker.example/x", "")]
-    [InlineData("[S1, S2]:https://attacker.example/x", "")]
+    [InlineData("[S1]: the regulator said", "the regulator said")]
+    [InlineData("   [S1]: the regulator said", "   the regulator said")]
+    [InlineData("[S99]: the regulator said", "the regulator said")]
+    [InlineData("[S99][S1]: the regulator said", "the regulator said")]
+    [InlineData("[S1, S2]:the regulator said", "the regulator said")]
+    [InlineData("- [S1]: the regulator said", "- the regulator said")]
+    [InlineData("* [S1]: the regulator said", "* the regulator said")]
+    [InlineData("+ [S1]: the regulator said", "+ the regulator said")]
+    [InlineData("1. [S1]: the regulator said", "1. the regulator said")]
+    [InlineData("1) [S1]: the regulator said", "1) the regulator said")]
+    [InlineData("> [S1]: the regulator said", "> the regulator said")]
+    [InlineData(">[S1]: the regulator said", ">the regulator said")]
+    [InlineData("> - [S1]: the regulator said", "> - the regulator said")]
+    [InlineData("  - 12. > [S1]: the regulator said", "  - 12. > the regulator said")]
+    [InlineData("-\t[S1]: the regulator said", "-\tthe regulator said")]
     public void A_citation_cannot_define_a_link(string line, string expectedLine)
     {
         var result = CitationChecker.Check("Before [S1].\n" + line + "\nAfter [S2].", Known(1, 2));
@@ -262,22 +273,43 @@ public class CitationCheckerTests
         Assert.Contains(result.Removed, r => r.Reason == "A citation must not define a link" || r.Reason.Contains("No source", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void A_removed_link_definition_reports_the_reason_and_the_line()
+    [Theory]
+    [InlineData("[S1]: https://evil.example/x", "")]
+    [InlineData("- [S1]: https://evil.example/x", "- ")]
+    [InlineData("1. [S1]:<https://evil.example/x>", "1. ")]
+    [InlineData("> - [S1]: https://evil.example/x \"title\"", "> - \"title\"")]
+    public void The_address_a_definition_would_have_used_goes_with_the_group(string line, string expectedLine)
     {
-        var result = CitationChecker.Check("[S1]: https://attacker.example/x\r\nNext.", Known(1));
-        Assert.Equal("\r\nNext.", result.Markdown);
+        Assert.Equal(expectedLine, CitationChecker.Check(line, Known(1)).Markdown);
+    }
+
+    [Fact]
+    public void A_removed_link_definition_reports_the_reason_and_only_the_group()
+    {
+        var result = CitationChecker.Check("[S1]: the regulator said\r\nNext.", Known(1));
+        Assert.Equal("the regulator said\r\nNext.", result.Markdown);
         var removed = Assert.Single(result.Removed);
-        Assert.Equal("[S1]: https://attacker.example/x", removed.Text);
+        Assert.Equal("[S1]:", removed.Text);
         Assert.Equal("A citation must not define a link", removed.Reason);
         Assert.Empty(result.Cited);
     }
 
     [Fact]
-    public void A_citation_followed_by_a_colon_mid_line_or_deep_indent_is_left_to_the_normal_rules()
+    public void Removed_text_is_capped_at_200_characters()
+    {
+        var result = CitationChecker.Check("X [" + string.Join(", ", Enumerable.Repeat("S99", 60)) + "](http://x) y.", Known(1));
+        Assert.All(result.Removed, r => Assert.True(r.Text.Length <= 200));
+        Assert.Equal("X y.", result.Markdown);
+    }
+
+    [Fact]
+    public void A_citation_followed_by_a_colon_after_prose_is_left_to_the_normal_rules()
     {
         Assert.Equal("Note [S1]: see this.", CitationChecker.Check("Note [S1]: see this.", Known(1)).Markdown);
-        Assert.Equal("    [S1]: code", CitationChecker.Check("    [S1]: code", Known(1)).Markdown);
+
+        // Any indent counts: a list item can be nested deeper than four spaces.
+        Assert.Equal("    code", CitationChecker.Check("    [S1]: code", Known(1)).Markdown);
+        Assert.Equal("Note - [S1]: see this.", CitationChecker.Check("Note - [S1]: see this.", Known(1)).Markdown);
     }
 
     [Fact]

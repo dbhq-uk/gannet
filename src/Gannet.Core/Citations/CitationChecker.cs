@@ -20,6 +20,13 @@ public static class CitationChecker
     // The longest link target removed after a citation-shaped link text.
     private const int MaxLinkTargetLength = 1000;
 
+    // The longest line prefix of markers looked at, and the most digits in a list number (CommonMark allows nine).
+    private const int MaxLinePrefix = 256;
+    private const int MaxListNumberDigits = 9;
+
+    // The most characters of a removed citation kept in the report.
+    private const int MaxReportedLength = 200;
+
     // The deepest bracket nesting allowed inside a link target.
     private const int MaxLinkNesting = 4;
 
@@ -82,18 +89,18 @@ public static class CitationChecker
                 var groupStart = IsEscaped(i, start) ? i - 1 : i;
                 var groupEnd = close + 1;
 
-                if (kind == GroupKind.Square && groupEnd < end && markdown[groupEnd] == ':' && StartsLine(groupStart, copyFrom, out var indent))
+                if (kind == GroupKind.Square && groupEnd < end && markdown[groupEnd] == ':' && StartsLine(groupStart, copyFrom))
                 {
-                    // "[S1]: https://..." at the start of a line would become a link reference definition once
-                    // numbered. Remove the group and the rest of the line, whether or not the source is known.
-                    var lineEnd = LineEnd(groupEnd, end);
-                    Removed.Add(new RemovedCitation(markdown[groupStart..lineEnd], "A citation must not define a link"));
-                    Copy(copyFrom, groupStart - indent);
-                    copyFrom = lineEnd;
+                    // "[S1]: https://..." at the start of a line (behind any list or quote markers) would become a
+                    // link reference definition once numbered. Remove the group, its colon and the address a
+                    // definition would take; the rest of the line stays as text.
+                    Removed.Add(Report(markdown[groupStart..(groupEnd + 1)], "A citation must not define a link"));
+                    Copy(copyFrom, groupStart);
+                    copyFrom = SkipDestination(groupEnd + 1, end);
                 }
                 else if (kind == GroupKind.Square && groupEnd < end && markdown[groupEnd] == '(' && TryFindLinkEnd(groupEnd, end, out var linkEnd))
                 {
-                    Removed.Add(new RemovedCitation(markdown[groupStart..linkEnd], "A citation must not be a link; cite sources like [S3]."));
+                    Removed.Add(Report(markdown[groupStart..linkEnd], "A citation must not be a link; cite sources like [S3]."));
                     groupEnd = linkEnd;
                     copyFrom = Replace(copyFrom, groupStart, groupEnd, end, string.Empty);
                 }
@@ -108,42 +115,131 @@ public static class CitationChecker
             Copy(copyFrom, end);
         }
 
-        // True when only 0 to 3 spaces come before "groupStart" on its line, as the text will be written out:
-        // a citation removed just before it does not count. "indent" is how many of those spaces are still unwritten.
-        private bool StartsLine(int groupStart, int copyFrom, out int indent)
+        // True when only spaces, tabs, ">" quote markers and list markers ("-", "*", "+", "1." and "1)") come before
+        // "groupStart" on its line, as the text will be written: a citation removed just before it does not count.
+        // The scan stops at the first other character, and is capped, so hostile input cannot make it costly.
+        private bool StartsLine(int groupStart, int copyFrom)
         {
-            const int MaxIndent = 3;
-            indent = 0;
-            var k = groupStart - 1;
-            while (k >= copyFrom && markdown[k] == ' ')
+            var prefix = new char[MaxLinePrefix];
+            var length = 0;
+            var reachedLineStart = false;
+            for (var k = groupStart - 1; k >= copyFrom && !reachedLineStart && length < MaxLinePrefix; k--)
             {
-                indent++;
-                k--;
+                reachedLineStart = !TryTake(markdown[k], prefix, ref length, out var stop);
+                if (stop)
+                {
+                    return false;
+                }
             }
 
-            if (k >= copyFrom)
+            for (var k = Output.Length - 1; k >= 0 && !reachedLineStart && length < MaxLinePrefix; k--)
             {
-                return markdown[k] == '\n' && indent <= MaxIndent;
+                reachedLineStart = !TryTake(Output[k], prefix, ref length, out var stop);
+                if (stop)
+                {
+                    return false;
+                }
             }
 
-            // Everything pending was spaces; carry on into what is already written.
-            var tail = Output.ToString(Math.Max(0, Output.Length - (MaxIndent + 1)), Math.Min(Output.Length, MaxIndent + 1));
-            var written = tail.Length - tail.TrimEnd(' ').Length;
-            var atStart = written < tail.Length ? tail[tail.Length - written - 1] == '\n' : tail.Length == Output.Length;
-            return atStart && indent + written <= MaxIndent;
+            // A prefix longer than the cap is only ever markers, so treat it as the start of a line: removing a
+            // colon that was harmless costs nothing, and missing a definition does.
+            return length >= MaxLinePrefix || IsMarkerPrefix(prefix.AsSpan(0, length));
         }
 
-        // The end of the line that holds "from", before its line break, but never past "end".
-        private int LineEnd(int from, int end)
+        // Adds one character, walking backwards. Returns false at a line break (the line start). "stop" is set for
+        // a character that cannot be part of a marker prefix.
+        private static bool TryTake(char c, char[] prefix, ref int length, out bool stop)
         {
-            var newline = markdown.IndexOf('\n', from, end - from);
-            if (newline < 0)
+            stop = false;
+            if (c == '\n')
             {
-                return end;
+                return false;
             }
 
-            return newline > from && markdown[newline - 1] == '\r' ? newline - 1 : newline;
+            if (length >= prefix.Length)
+            {
+                return true;
+            }
+
+            if (c is ' ' or '\t' or '>' or '-' or '*' or '+' or '.' or ')' or '\r' || char.IsAsciiDigit(c))
+            {
+                prefix[length++] = c;
+                return true;
+            }
+
+            stop = true;
+            return true;
         }
+
+        // The prefix is held in reverse. Reads it forwards: any mix of spaces, tabs, ">" and list markers.
+        private static bool IsMarkerPrefix(ReadOnlySpan<char> reversed)
+        {
+            var i = reversed.Length - 1;
+            while (i >= 0)
+            {
+                var c = reversed[i];
+                if (c is ' ' or '\t' or '>' or '-' or '*' or '+' or '\r')
+                {
+                    i--;
+                }
+                else if (char.IsAsciiDigit(c))
+                {
+                    var digits = 0;
+                    while (i >= 0 && char.IsAsciiDigit(reversed[i]))
+                    {
+                        digits++;
+                        i--;
+                    }
+
+                    if (i < 0 || reversed[i] is not ('.' or ')') || digits > MaxListNumberDigits)
+                    {
+                        return false;
+                    }
+
+                    i--;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // After "[S1]:" skips spaces and tabs, and then the address a definition would take: the next word when it
+        // starts like a web address or "<". Stops at the end of the line.
+        private int SkipDestination(int from, int end)
+        {
+            var i = from;
+            while (i < end && markdown[i] is ' ' or '\t')
+            {
+                i++;
+            }
+
+            var rest = markdown.AsSpan(i, end - i);
+            if (!(rest.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || rest.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                || rest.StartsWith("www.", StringComparison.OrdinalIgnoreCase) || rest.StartsWith("<")))
+            {
+                return i;
+            }
+
+            while (i < end && markdown[i] is not (' ' or '\t' or '\r' or '\n'))
+            {
+                i++;
+            }
+
+            while (i < end && markdown[i] is ' ' or '\t')
+            {
+                i++;
+            }
+
+            return i;
+        }
+
+        // The text kept in a removal report: a group can be 400 characters, and a log needs only the start.
+        private static RemovedCitation Report(string text, string reason) =>
+            new(text.Length <= MaxReportedLength ? text : text[..MaxReportedLength], reason);
 
         // Copies the text before the group, then the replacement. A replacement of nothing also takes one
         // leading space or tab (or, at the start of a line, one trailing space). Returns where copying resumes.
@@ -178,18 +274,18 @@ public static class CitationChecker
             {
                 if (kind == GroupKind.Round)
                 {
-                    Removed.Add(new RemovedCitation($"({token.Text})", "Citations must use square brackets, like [S3]."));
+                    Removed.Add(Report($"({token.Text})", "Citations must use square brackets, like [S3]."));
                 }
                 else if (!SourceId.TryParse(token.Text, out var id))
                 {
                     var reason = token.Kind == TokenKind.Bare
                         ? "Numbered citations are not allowed; cite sources by ID, like [S3]."
                         : "Not a source ID; cite sources like [S3].";
-                    Removed.Add(new RemovedCitation($"[{token.Text}]", reason));
+                    Removed.Add(Report($"[{token.Text}]", reason));
                 }
                 else if (!known.Contains(id))
                 {
-                    Removed.Add(new RemovedCitation($"[{token.Text}]", $"No source {token.Text} was given to the writer in this run."));
+                    Removed.Add(Report($"[{token.Text}]", $"No source {token.Text} was given to the writer in this run."));
                 }
                 else
                 {
