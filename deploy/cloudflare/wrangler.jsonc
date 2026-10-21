@@ -1,0 +1,23 @@
+{
+  // gannet on Cloudflare Containers. The custom domain gannet.dbhq.uk is attached by
+  // Terraform in dbhq-uk/dbhq (infra/terraform/gannet.tf), after its Access application,
+  // so this file declares no routes.
+  "name": "gannet",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "containers": [
+    {
+      "class_name": "GannetContainer",
+      "image": "../../Dockerfile",
+      "image_build_context": "../..",
+      "instance_type": "basic",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "GANNET", "class_name": "GannetContainer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GannetContainer"] }],
+  "observability": { "enabled": true }
+}
