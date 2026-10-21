@@ -1,0 +1,63 @@
+using System.Globalization;
+
+namespace Gannet.Core.Citations;
+
+public sealed record ReferenceSource(Uri Url, string Title);
+
+/// <summary>A citation style for the reference list. Add a style by adding a class and listing it in <see cref="CitationStyles.All"/>.</summary>
+public interface ICitationStyle
+{
+    string Name { get; }
+
+    string Format(ReferenceSource source, DateOnly accessed);
+}
+
+public static class CitationStyles
+{
+    public static IReadOnlyList<ICitationStyle> All { get; } = [new Apa(), new Mla(), new Chicago(), new Ieee()];
+
+    public static bool TryGet(string name, out ICitationStyle style)
+    {
+        style = All.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))!;
+        return style is not null;
+    }
+
+    public static ICitationStyle Get(string name) =>
+        TryGet(name, out var style)
+            ? style
+            : throw new ArgumentException($"Unknown citation style '{name}'. Use one of: {string.Join(", ", All.Select(s => s.Name))}.", nameof(name));
+
+    private static string TitleOf(ReferenceSource source) =>
+        string.IsNullOrWhiteSpace(source.Title) ? source.Url.Host : source.Title.Trim();
+
+    private static string Long(DateOnly date) => date.ToString("MMMM dd, yyyy", CultureInfo.InvariantCulture);
+
+    private sealed class Apa : ICitationStyle
+    {
+        public string Name => "apa";
+
+        public string Format(ReferenceSource source, DateOnly accessed) => $"{TitleOf(source)}. (n.d.). Retrieved from {source.Url}";
+    }
+
+    private sealed class Mla : ICitationStyle
+    {
+        public string Name => "mla";
+
+        public string Format(ReferenceSource source, DateOnly accessed) =>
+            $"\"{TitleOf(source)}\". Web. {accessed.ToString("dd MMM. yyyy", CultureInfo.InvariantCulture)}. <{source.Url}>";
+    }
+
+    private sealed class Chicago : ICitationStyle
+    {
+        public string Name => "chicago";
+
+        public string Format(ReferenceSource source, DateOnly accessed) => $"\"{TitleOf(source)}.\" Accessed {Long(accessed)}. {source.Url}.";
+    }
+
+    private sealed class Ieee : ICitationStyle
+    {
+        public string Name => "ieee";
+
+        public string Format(ReferenceSource source, DateOnly accessed) => $"\"{TitleOf(source)},\" {source.Url}, accessed {Long(accessed)}.";
+    }
+}
