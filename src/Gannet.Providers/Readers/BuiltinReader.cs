@@ -17,12 +17,18 @@ internal sealed class BuiltinReader : IPageReader
 
     private const int MaxBytes = 5_000_000;
     private const int MaxRedirects = 5;
-    private static readonly TimeSpan DefaultParseTimeout = TimeSpan.FromSeconds(15);
+    internal static readonly TimeSpan DefaultParseTimeout = TimeSpan.FromSeconds(30);
+
+    // A process-wide cap on parse workers. A parse that times out is abandoned, not stopped, so it keeps its slot until it really ends.
+    internal static readonly int GateSize = Math.Max(1, Environment.ProcessorCount / 2);
+    private static readonly SemaphoreSlim DefaultGate = new(GateSize, GateSize);
 
     private readonly HttpClient http;
     private readonly bool allowPrivateAddresses;
     private readonly Func<string, CancellationToken, Task<IPAddress[]>> resolve;
     private readonly TimeSpan parseTimeout;
+    private readonly SemaphoreSlim gate;
+    private readonly Func<Uri, string, (string Title, string Markdown)> parse;
 
     static BuiltinReader() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
@@ -31,13 +37,21 @@ internal sealed class BuiltinReader : IPageReader
     {
     }
 
-    /// <summary>For tests: a fake name lookup, and a parse time limit other than 15 seconds.</summary>
-    internal BuiltinReader(HttpClient http, bool allowPrivateAddresses, Func<string, CancellationToken, Task<IPAddress[]>> resolve, TimeSpan? parseTimeout)
+    /// <summary>For tests: a fake name lookup, a parse time limit, a parse gate of another size and another parse step.</summary>
+    internal BuiltinReader(
+        HttpClient http,
+        bool allowPrivateAddresses,
+        Func<string, CancellationToken, Task<IPAddress[]>> resolve,
+        TimeSpan? parseTimeout,
+        SemaphoreSlim? gate = null,
+        Func<Uri, string, (string Title, string Markdown)>? parse = null)
     {
         this.http = http;
         this.allowPrivateAddresses = allowPrivateAddresses;
         this.resolve = resolve;
         this.parseTimeout = parseTimeout ?? DefaultParseTimeout;
+        this.gate = gate ?? DefaultGate;
+        this.parse = parse ?? Extract;
     }
 
     public string Name => "builtin";
@@ -133,10 +147,39 @@ internal sealed class BuiltinReader : IPageReader
             throw new ServiceFailedException(DisplayName, "the page is too deeply nested to read");
         }
 
-        // Parsing cannot be cancelled. On a timeout the worker thread is abandoned, not stopped; it ends when the parser does.
+        // Wait for a slot, for as long as a parse may take. Cancellation here is a cancellation, not a "busy".
+        if (!await gate.WaitAsync(parseTimeout, ct))
+        {
+            throw new ServiceFailedException(DisplayName, "the reader is busy; try the next reader");
+        }
+
+        // Parsing cannot be cancelled. The slot is released when the worker really ends, not when the caller gives up: on a timeout the worker
+        // thread is abandoned, not stopped, so it keeps its slot and at most GateSize threads can be busy at once. The worker is not given ct,
+        // because a worker that never starts would never release the slot.
+        Task<(string Title, string Markdown)> worker;
         try
         {
-            return await Task.Run(() => Extract(url, html), ct).WaitAsync(parseTimeout, ct);
+            worker = Task.Run(() =>
+            {
+                try
+                {
+                    return parse(url, html);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
+        }
+        catch
+        {
+            gate.Release();
+            throw;
+        }
+
+        try
+        {
+            return await worker.WaitAsync(parseTimeout, ct);
         }
         catch (TimeoutException)
         {
