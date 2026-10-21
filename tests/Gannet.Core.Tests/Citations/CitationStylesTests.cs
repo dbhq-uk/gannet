@@ -30,4 +30,38 @@ public class CitationStylesTests
         var error = Assert.Throws<ArgumentException>(() => CitationStyles.Get("harvard"));
         Assert.Contains("apa, mla, chicago, ieee", error.Message, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("apa", "Example Title. (n.d.). Retrieved from https://example.com/a%20b")]
+    [InlineData("mla", "\"Example Title\". Web. 05 Oct. 2026. <https://example.com/a%20b>")]
+    [InlineData("chicago", "\"Example Title.\" Accessed October 05, 2026. https://example.com/a%20b.")]
+    [InlineData("ieee", "\"Example Title,\" https://example.com/a%20b, accessed October 05, 2026.")]
+    public void An_encoded_space_in_the_address_stays_encoded(string style, string expected)
+    {
+        var source = new ReferenceSource(new Uri("https://example.com/a%20b"), "Example Title");
+        Assert.Equal(expected, CitationStyles.Get(style).Format(source, Accessed));
+    }
+
+    [Theory]
+    [InlineData("mla", "\"example.com\". Web. 07 Mar. 2026. <https://example.com/a>")]
+    [InlineData("chicago", "\"example.com.\" Accessed March 07, 2026. https://example.com/a.")]
+    [InlineData("ieee", "\"example.com,\" https://example.com/a, accessed March 07, 2026.")]
+    public void An_untitled_source_uses_the_host_and_dates_outside_october_format(string style, string expected)
+    {
+        var untitled = new ReferenceSource(new Uri("https://example.com/a"), string.Empty);
+        Assert.Equal(expected, CitationStyles.Get(style).Format(untitled, new DateOnly(2026, 3, 7)));
+    }
+
+    [Fact]
+    public void A_title_with_line_breaks_becomes_one_line()
+    {
+        var source = new ReferenceSource(new Uri("https://example.com/a"), "A\n\n[1]: https://x\n\n# Injected");
+        foreach (var style in CitationStyles.All)
+        {
+            var line = style.Format(source, Accessed);
+            Assert.DoesNotContain('\n', line);
+            Assert.DoesNotContain('\r', line);
+            Assert.Contains("A [1]: https://x # Injected", line, StringComparison.Ordinal);
+        }
+    }
 }

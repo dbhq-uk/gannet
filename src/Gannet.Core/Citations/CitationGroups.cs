@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -41,8 +42,12 @@ internal static partial class CitationGroups
     private static partial Regex Token();
 
     // What may sit between tokens. Empty entries ("[S1,,S2]", "[S1,]") are just extra separators.
-    [GeneratedRegex(@"^(?:[\s,;\-\u2013]|and)*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?:[\s,;\-\u2013/]|and|to)*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Separators();
+
+    // The same, after the last token, where one full stop is also allowed ("[S99.]").
+    [GeneratedRegex(@"^(?:[\s,;\-\u2013/]|and|to)*\.?\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex TrailingSeparators();
 
     /// <summary>Returns the tokens, or null when the content is not a citation-like group.</summary>
     public static IReadOnlyList<GroupToken>? Parse(ReadOnlySpan<char> content, GroupKind kind)
@@ -62,15 +67,16 @@ internal static partial class CitationGroups
             tokens.Add(new GroupToken(tokenText, Classify(tokenText)));
         }
 
-        if (tokens.Count == 0 || !Separators().IsMatch(text[position..]))
+        if (tokens.Count == 0 || !TrailingSeparators().IsMatch(text[position..]))
         {
             return null;
         }
 
-        // (1) and f(2) are ordinary prose, so round brackets only count when every token is a source form.
+        // (1), f(2) and "(s 172)" (a UK statute section) are ordinary prose, so round brackets only count when
+        // every token is a strict source form: "Source ..." or an upper-case S directly followed by a digit.
         if (kind == GroupKind.Round)
         {
-            return tokens.TrueForAll(t => t.Kind == TokenKind.Source) ? tokens : null;
+            return tokens.TrueForAll(t => IsStrictSourceForm(t.Text)) ? tokens : null;
         }
 
         // A group of only digits is a citation when the numbers are short. [2024] UKSC 1 is a case citation.
@@ -81,6 +87,9 @@ internal static partial class CitationGroups
 
         return tokens;
     }
+
+    private static bool IsStrictSourceForm(string token) =>
+        token.StartsWith("source", StringComparison.OrdinalIgnoreCase) || (token.Length > 1 && token[0] == 'S' && char.IsAsciiDigit(token[1]));
 
     private static TokenKind Classify(string token)
     {
@@ -127,6 +136,7 @@ internal static partial class CitationGroups
         }
     }
 
+    // Every Unicode format (Cf) character, plus the combining grapheme joiner, which is invisible too.
     private static bool IsInvisible(char c) =>
-        c is '\u200B' or '\u200C' or '\u200D' or '\u2060' or '\uFEFF' or '\u00AD' or '\u200E' or '\u200F';
+        char.GetUnicodeCategory(c) == UnicodeCategory.Format || c == '\u034F';
 }
