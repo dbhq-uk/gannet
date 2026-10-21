@@ -84,6 +84,27 @@ public class PublicAddressGuardTests
     [InlineData("2001:db9::", true)]
     [InlineData("2606:4700:4700::1111", true)]
     [InlineData("2001:4860:4860::8888", true)]
+    [InlineData("2000:ffff::1", true)]
+    [InlineData("2001::", false)]
+    [InlineData("2001:0:ffff:ffff:ffff:ffff:ffff:ffff", false)]
+    [InlineData("2001:1::1", true)]
+    [InlineData("febf::", false)]
+    [InlineData("fec0::", false)]
+    [InlineData("feff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", false)]
+    [InlineData("64:ff9b:1::", false)]
+    [InlineData("64:ff9b:1:ffff:ffff:ffff:ffff:ffff", false)]
+    [InlineData("64:ff9b:2::", true)]
+    [InlineData("100::", false)]
+    [InlineData("100::ffff:ffff:ffff:ffff", false)]
+    [InlineData("100:0:0:1::", true)]
+    [InlineData("101::", true)]
+    [InlineData("2002:7f00:1::", false)]
+    [InlineData("2002:a00:1::1", false)]
+    [InlineData("2002:a9fe:a9fe::", false)]
+    [InlineData("2002:c0a8:101::", false)]
+    [InlineData("2002:808:808::", true)]
+    [InlineData("2002:808:808:1:2:3:4:5", true)]
+    [InlineData("2003::", true)]
     public void Ranges_are_judged_on_both_sides_of_each_boundary(string address, bool expected) =>
         Assert.Equal(expected, PublicAddressGuard.IsPublic(IPAddress.Parse(address)));
 
@@ -160,6 +181,40 @@ public class PublicAddressGuardTests
         var error = await Assert.ThrowsAsync<ServiceFailedException>(() => PublicAddressGuard.EnsurePublicAsync(new Uri(url), Resolves("8.8.8.8"), CancellationToken.None));
         Assert.DoesNotContain("secret", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("user", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("http://ｌｏｃａｌｈｏｓｔ/")]
+    [InlineData("http://ＬＯＣＡＬＨＯＳＴ:8080/")]
+    [InlineData("http://app.ｌｏｃａｌｈｏｓｔ/")]
+    [InlineData("http://ｄｂ.ｉｎｔｅｒｎａｌ/")]
+    public async Task Full_width_local_names_are_refused_without_a_lookup(string url) =>
+        await Assert.ThrowsAsync<ServiceFailedException>(() => PublicAddressGuard.EnsurePublicAsync(new Uri(url), NoLookup, CancellationToken.None));
+
+    [Fact]
+    public async Task The_lookup_is_given_the_ascii_form_of_an_international_name()
+    {
+        string? asked = null;
+        await PublicAddressGuard.EnsurePublicAsync(new Uri("https://bücher.example/"), (host, _) =>
+        {
+            asked = host;
+            return Task.FromResult(new[] { IPAddress.Parse("93.184.216.34") });
+        }, CancellationToken.None);
+        Assert.Equal("xn--bcher-kva.example", asked);
+    }
+
+    [Theory]
+    [InlineData("203.0.114.1")]
+    [InlineData("2606:4700:4700::1111")]
+    [InlineData("example.org")]
+    public void An_unreachable_message_never_carries_an_ip(string host)
+    {
+        var message = PublicAddressGuard.Unreachable(host).Message;
+        Assert.DoesNotMatch(@"\d+\.\d+\.\d+|[0-9a-f]{3,}:", message);
+        if (!IPAddress.TryParse(host, out _))
+        {
+            Assert.Contains(host, message, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
