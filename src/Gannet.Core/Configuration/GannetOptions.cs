@@ -87,6 +87,12 @@ public sealed class ReadersOptions
 
     public ProxyOptions? Proxy { get; set; }
 
+    /// <summary>
+    /// When true, the built-in reader may fetch loopback, private and link-local addresses. Off by default: page addresses come from
+    /// search results and from the model, so they are not trusted. Turn it on only for a self-hosted setup that needs it.
+    /// </summary>
+    public bool AllowPrivateAddresses { get; set; }
+
     public Dictionary<string, ServiceOptions> Services { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
