@@ -78,7 +78,7 @@ public class TavilySearchTests
     }
 
     [Theory]
-    [InlineData(0, 1)]
+    [InlineData(1, 1)]
     [InlineData(50, 20)]
     public async Task Max_results_stays_inside_what_tavily_accepts(int asked, int sent)
     {
@@ -87,6 +87,56 @@ public class TavilySearchTests
 
         using var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body!);
         Assert.Equal(sent, body.RootElement.GetProperty("max_results").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(432)]
+    [InlineData(433)]
+    public async Task Plan_and_credit_limits_are_quota_errors(int status)
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json("""{ "detail": "limit tvly-secret" }""", (HttpStatusCode)status));
+        var error = await Assert.ThrowsAsync<QuotaExhaustedException>(() => new TavilySearch(handler.Client(), "tavily", new ServiceOptions { ApiKey = "tvly-secret" }).SearchAsync("q", 3, CancellationToken.None));
+
+        Assert.Contains(status.ToString(System.Globalization.CultureInfo.InvariantCulture), error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("tvly-secret", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_documented_http_date_format_is_read()
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json("""
+            { "results": [ { "title": "Dated", "url": "https://dated.example/", "content": "c", "published_date": "Tue, 11 Mar 2025 17:00:00 GMT" } ] }
+            """));
+        var hits = await new TavilySearch(handler.Client(), "tavily", new ServiceOptions()).SearchAsync("q", 3, CancellationToken.None);
+
+        Assert.Equal(new DateTimeOffset(2025, 3, 11, 17, 0, 0, TimeSpan.Zero), Assert.Single(hits).Published);
+    }
+
+    [Fact]
+    public async Task Duplicate_urls_keep_the_first_hit_before_the_cap()
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json("""
+            { "results": [
+                { "title": "First", "url": "https://dup.example/a", "content": "1" },
+                { "title": "Again", "url": "https://dup.example/a", "content": "2" },
+                { "title": "Other", "url": "https://other.example/", "content": "3" }
+            ] }
+            """));
+        var hits = await new TavilySearch(handler.Client(), "tavily", new ServiceOptions()).SearchAsync("q", 2, CancellationToken.None);
+
+        Assert.Equal(["First", "Other"], hits.Select(h => h.Title));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-3)]
+    public async Task No_results_wanted_sends_no_request(int asked)
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json(Fixture));
+        var hits = await new TavilySearch(handler.Client(), "tavily", new ServiceOptions()).SearchAsync("q", asked, CancellationToken.None);
+
+        Assert.Empty(hits);
+        Assert.Empty(handler.Requests);
     }
 
     [Fact]
