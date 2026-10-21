@@ -42,4 +42,11 @@ public class SourceIdTests
         Assert.Equal("\"S7\"", json);
         Assert.Equal(new SourceId(7), JsonSerializer.Deserialize<SourceId>(json, GannetJson.Options));
     }
+
+    [Fact]
+    public void An_unassigned_source_id_cannot_be_written()
+    {
+        var error = Assert.Throws<JsonException>(() => JsonSerializer.Serialize(default(SourceId), GannetJson.Options));
+        Assert.Equal("A source ID must be S1 or higher; this one was never assigned.", error.Message);
+    }
 }

@@ -44,7 +44,19 @@ public sealed class RunStore(IBlobStore blobs, TimeProvider time) : IRunStore
         }
 
         var bytes = await blobs.GetAsync(RunKey(id), ct);
-        return bytes is null ? null : JsonSerializer.Deserialize<RunRecord>(bytes, GannetJson.Options);
+        if (bytes is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<RunRecord>(bytes, GannetJson.Options);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     public async Task<IReadOnlyList<RunSummary>> ListAsync(string? owner, CancellationToken ct)

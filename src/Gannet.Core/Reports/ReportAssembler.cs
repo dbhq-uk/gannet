@@ -41,7 +41,7 @@ public static partial class ReportAssembler
 
         var md = new StringBuilder();
         md.Append("# ").Append(HeadingText(question)).Append("\n\n");
-        md.Append(CultureInfo.InvariantCulture, $"This report draws on {numbered.References.Count} sources across {numbered.Sections.Count} sections.\n\n");
+        md.Append(CultureInfo.InvariantCulture, $"This report draws on {numbered.References.Count} {Plural(numbered.References.Count, "source")} across {numbered.Sections.Count} {Plural(numbered.Sections.Count, "section")}.\n\n");
         md.Append("## Research objectives\n\n");
         for (var i = 0; i < plan.Objectives.Count; i++)
         {
@@ -77,9 +77,14 @@ public static partial class ReportAssembler
     /// </summary>
     private static ReportSection FlattenSection(ReportSection section)
     {
-        var title = OneLine(section.Title);
+        var title = NoCitations(OneLine(section.Title));
         return new ReportSection(title, Clean(title, section.Markdown));
     }
+
+    /// <summary>Removes anything citation-shaped: a heading cites nothing, and no source is "known" there.</summary>
+    private static string NoCitations(string text) => CitationChecker.Check(text, new HashSet<SourceId>()).Markdown;
+
+    private static string Plural(int count, string noun) => count == 1 ? noun : noun + "s";
 
     /// <summary>Collapses every run of whitespace, newlines included, to one space and trims the ends.</summary>
     private static string OneLine(string text) => Whitespace().Replace(text, " ").Trim();
@@ -151,7 +156,7 @@ public static partial class ReportAssembler
         var text = markdown.ReplaceLineEndings("\n").Trim();
         var firstLineEnd = text.IndexOf('\n', StringComparison.Ordinal);
         var firstLine = firstLineEnd < 0 ? text : text[..firstLineEnd];
-        if (firstLine.StartsWith('#') && string.Equals(firstLine.TrimStart('#').Trim(), title.Trim(), StringComparison.OrdinalIgnoreCase))
+        if (firstLine.StartsWith('#') && string.Equals(NoCitations(firstLine.TrimStart('#').Trim()), title.Trim(), StringComparison.OrdinalIgnoreCase))
         {
             text = firstLineEnd < 0 ? string.Empty : text[(firstLineEnd + 1)..].Trim();
         }
@@ -159,11 +164,15 @@ public static partial class ReportAssembler
         return DemoteOutsideFences(text);
     }
 
-    /// <summary>Demotes # and ## headings to ### in the prose, and copies fenced code blocks through verbatim.</summary>
+    /// <summary>
+    /// Demotes # and ## headings to ### in the prose, and copies fenced code blocks through verbatim. A fence the
+    /// section ended inside is closed, so it cannot swallow the next heading and the reference list.
+    /// </summary>
     private static string DemoteOutsideFences(string text)
     {
         var result = new StringBuilder(text.Length);
         var last = 0;
+        string? missingClose = null;
         foreach (var code in MarkdownCode.Find(text))
         {
             if (!code.Fenced)
@@ -173,8 +182,20 @@ public static partial class ReportAssembler
 
             result.Append(TopHeading().Replace(text[last..code.Start], "### ")).Append(text, code.Start, code.End - code.Start);
             last = code.End;
+            missingClose = code.MissingClose;
         }
 
-        return result.Append(TopHeading().Replace(text[last..], "### ")).ToString();
+        result.Append(TopHeading().Replace(text[last..], "### "));
+        if (missingClose is not null)
+        {
+            if (result.Length > 0 && result[^1] != '\n')
+            {
+                result.Append('\n');
+            }
+
+            result.Append(missingClose);
+        }
+
+        return result.ToString();
     }
 }

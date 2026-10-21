@@ -1,7 +1,10 @@
 namespace Gannet.Core.Citations;
 
-/// <summary>A half-open range of characters in a string. <paramref name="Fenced"/> is true for a fenced code block, false for an inline code span.</summary>
-internal readonly record struct TextRange(int Start, int End, bool Fenced = false);
+/// <summary>
+/// A half-open range of characters in a string. <paramref name="Fenced"/> is true for a fenced code block, false for an inline code span.
+/// <paramref name="MissingClose"/> is, for a fenced block the text ended inside, the fence that would close it; otherwise null.
+/// </summary>
+internal readonly record struct TextRange(int Start, int End, bool Fenced = false, string? MissingClose = null);
 
 /// <summary>
 /// Finds the code in Markdown text, following CommonMark: fenced code blocks (backticks or tildes, closed by a
@@ -62,9 +65,9 @@ internal static class MarkdownCode
             position = next;
         }
 
-        if (open is not null)
+        if (open is { } unclosed)
         {
-            ranges.Add(new TextRange(fenceStart, text.Length, Fenced: true));
+            ranges.Add(new TextRange(fenceStart, text.Length, Fenced: true, MissingClose: new string(unclosed.Marker, unclosed.Length)));
         }
 
         AddSpans(runs, ranges);

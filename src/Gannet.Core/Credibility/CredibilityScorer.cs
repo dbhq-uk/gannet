@@ -25,7 +25,7 @@ public sealed class CredibilityScorer(CredibilityRules rules)
 
         var suspicious = false;
         var tld = host[(host.LastIndexOf('.') + 1)..];
-        if (rules.SuspiciousTopLevelDomains.Contains(tld, StringComparer.OrdinalIgnoreCase))
+        if (rules.SuspiciousTopLevelDomains.Any(t => string.Equals(t.TrimStart('.'), tld, StringComparison.OrdinalIgnoreCase)))
         {
             score -= rules.SuspiciousPenalty ?? 20;
             applied.Add($"Suspicious top-level domain: .{tld}");

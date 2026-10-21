@@ -43,6 +43,14 @@ internal sealed class SourceIdJsonConverter : JsonConverter<SourceId>
     public override SourceId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         SourceId.TryParse(reader.GetString(), out var id) ? id : throw new JsonException("Expected a source ID like \"S3\".");
 
-    public override void Write(Utf8JsonWriter writer, SourceId value, JsonSerializerOptions options) =>
+    public override void Write(Utf8JsonWriter writer, SourceId value, JsonSerializerOptions options)
+    {
+        // default(SourceId) would write "S0", which Read refuses; fail at the write, where the mistake is.
+        if (value.Number < 1)
+        {
+            throw new JsonException("A source ID must be S1 or higher; this one was never assigned.");
+        }
+
         writer.WriteStringValue(value.ToString());
+    }
 }

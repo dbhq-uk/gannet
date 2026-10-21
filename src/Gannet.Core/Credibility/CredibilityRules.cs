@@ -49,9 +49,9 @@ public sealed record CredibilityRules
         AcademicBonus = user.AcademicBonus ?? AcademicBonus,
         HighAt = user.HighAt ?? HighAt,
         MediumAt = user.MediumAt ?? MediumAt,
-        AcademicPaths = [.. AcademicPaths.Union(user.AcademicPaths, StringComparer.OrdinalIgnoreCase)],
-        TrustedDomains = [.. TrustedDomains.Union(user.TrustedDomains, StringComparer.OrdinalIgnoreCase)],
-        SuspiciousTopLevelDomains = [.. SuspiciousTopLevelDomains.Union(user.SuspiciousTopLevelDomains, StringComparer.OrdinalIgnoreCase)],
-        SuspiciousDomains = [.. SuspiciousDomains.Union(user.SuspiciousDomains, StringComparer.OrdinalIgnoreCase)],
+        AcademicPaths = [.. (AcademicPaths ?? []).Union(user.AcademicPaths ?? [], StringComparer.OrdinalIgnoreCase)],
+        TrustedDomains = [.. (TrustedDomains ?? []).Union(user.TrustedDomains ?? [], StringComparer.OrdinalIgnoreCase)],
+        SuspiciousTopLevelDomains = [.. (SuspiciousTopLevelDomains ?? []).Union(user.SuspiciousTopLevelDomains ?? [], StringComparer.OrdinalIgnoreCase)],
+        SuspiciousDomains = [.. (SuspiciousDomains ?? []).Union(user.SuspiciousDomains ?? [], StringComparer.OrdinalIgnoreCase)],
     };
 }

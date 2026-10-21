@@ -218,6 +218,7 @@ public static class ReportExporters
             AutolinkInline autolink => autolink.Url,
             TaskList task => task.Checked ? "[x]" : "[ ]",
             LinkInline link => Link(link),
+            DelimiterInline delimiter => delimiter.ToLiteral() + Inlines(delimiter),
             ContainerInline container => Inlines(container),
             _ => string.Empty,
         };

@@ -83,4 +83,27 @@ public class CredibilityScorerTests
         Assert.Equal(95, merged.Score(new Uri("https://www.fca.org.uk/firms")).Value);
         Assert.Equal(95, merged.Score(new Uri("https://www.bbc.co.uk/")).Value);
     }
+
+    [Theory]
+    [InlineData(".tk")]
+    [InlineData("tk")]
+    [InlineData(".TK")]
+    public void Suspicious_top_level_domains_match_with_or_without_a_leading_dot(string entry)
+    {
+        var rules = new CredibilityRules { SuspiciousTopLevelDomains = [entry] };
+        var score = new CredibilityScorer(rules).Score(new Uri("https://example.tk/"));
+        Assert.Contains("Suspicious top-level domain: .tk", score.Rules);
+    }
+
+    [Fact]
+    public void A_user_rules_file_with_null_lists_does_not_crash_the_merge()
+    {
+        var user = CredibilityRules.Parse("""{ "academicPaths": null, "trustedDomains": null, "suspiciousTopLevelDomains": null, "suspiciousDomains": null }""");
+        var defaults = CredibilityRules.LoadDefault();
+        var merged = defaults.MergeWith(user);
+        Assert.Equal(defaults.TrustedDomains, merged.TrustedDomains);
+        Assert.Equal(defaults.AcademicPaths, merged.AcademicPaths);
+        Assert.Equal(defaults.SuspiciousTopLevelDomains, merged.SuspiciousTopLevelDomains);
+        Assert.Equal(defaults.SuspiciousDomains, merged.SuspiciousDomains);
+    }
 }
