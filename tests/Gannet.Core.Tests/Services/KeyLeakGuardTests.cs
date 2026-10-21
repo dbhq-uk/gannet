@@ -99,4 +99,53 @@ public class KeyLeakGuardTests
             }
         }
     }
+
+    private static IEnumerable<Type> ConfigurationTypes() =>
+        typeof(GannetOptions).Assembly.GetExportedTypes().Where(t => t.Namespace == "Gannet.Core.Configuration");
+
+    [Fact]
+    public void Configuration_types_are_found_by_reflection()
+    {
+        var names = ConfigurationTypes().Select(t => t.Name).ToList();
+        Assert.Contains(nameof(ModelOptions), names);
+        Assert.Contains(nameof(ServiceOptions), names);
+        Assert.Contains(nameof(ProxyOptions), names);
+        Assert.Contains(nameof(S3StorageOptions), names);
+    }
+
+    [Fact]
+    public void Configuration_types_are_not_records()
+    {
+        // A record prints every property from ToString, which would print a key into a log line.
+        foreach (var type in ConfigurationTypes())
+        {
+            Assert.Null(type.GetMethod("PrintMembers", BindingFlags.NonPublic | BindingFlags.Instance));
+            Assert.Null(type.GetMethod("<Clone>$", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance));
+        }
+    }
+
+    [Fact]
+    public void Configuration_types_do_not_override_ToString()
+    {
+        foreach (var type in ConfigurationTypes())
+        {
+            var toString = type.GetMethod(nameof(ToString), Type.EmptyTypes)!;
+            Assert.Equal(typeof(object), toString.DeclaringType);
+        }
+    }
+
+    [Fact]
+    public void Configuration_types_never_print_a_string_they_hold()
+    {
+        foreach (var type in ConfigurationTypes().Where(t => t.IsClass && t.GetConstructor(Type.EmptyTypes) is not null))
+        {
+            var instance = Activator.CreateInstance(type)!;
+            foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.PropertyType == typeof(string) && p.CanWrite))
+            {
+                property.SetValue(instance, Secret);
+            }
+
+            Assert.DoesNotContain(Secret, instance.ToString(), StringComparison.Ordinal);
+        }
+    }
 }

@@ -108,6 +108,16 @@ public class JsonReadTests
     }
 
     [Fact]
+    public async Task ParseAsync_refuses_on_content_length_without_reading_the_body()
+    {
+        var content = new StreamContent(new ThrowingStream());
+        content.Headers.ContentLength = 1000;
+        var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => JsonRead.ParseAsync(response, "Brave", 100, CancellationToken.None));
+        Assert.Contains("too large", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ParseAsync_accepts_a_body_exactly_at_the_cap()
     {
         var body = "{\"a\":\"x\"}";
@@ -117,6 +127,38 @@ public class JsonReadTests
 
     [Fact]
     public void The_default_cap_is_sixteen_megabytes() => Assert.Equal(16 * 1024 * 1024, JsonRead.MaxBodyBytes);
+
+    private sealed class ThrowingStream : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new InvalidOperationException("The body was touched.");
+
+        public override long Position
+        {
+            get => throw new InvalidOperationException("The body was touched.");
+            set => throw new InvalidOperationException("The body was touched.");
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new InvalidOperationException("The body was read.");
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The body was read.");
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 
     private sealed class UnknownLengthStream(byte[] bytes) : MemoryStream(bytes)
     {
