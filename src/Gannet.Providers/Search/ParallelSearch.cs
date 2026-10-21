@@ -10,6 +10,9 @@ internal sealed class ParallelSearch(HttpClient http, string name, ServiceOption
     // Parallel caps results at 20 and reduces a higher max_results to 20 with a warning (Advanced Search Settings, advanced_settings.max_results).
     private const int MaxResultsAllowed = 20;
 
+    // Upper bound on excerpt characters per URL (advanced_settings.excerpt_settings.max_chars_per_result). Without it the excerpts are unbounded.
+    private const int ExcerptCharacters = 1500;
+
     public override string Type => "parallel";
 
     public override string DisplayName => "Parallel";
@@ -29,7 +32,11 @@ internal sealed class ParallelSearch(HttpClient http, string name, ServiceOption
         {
             objective = query,
             search_queries = new[] { query },
-            advanced_settings = new { max_results = Math.Clamp(maxResults, 1, MaxResultsAllowed) },
+            advanced_settings = new
+            {
+                max_results = Math.Clamp(maxResults, 1, MaxResultsAllowed),
+                excerpt_settings = new { max_chars_per_result = ExcerptCharacters },
+            },
         });
         request.Headers.Add("x-api-key", key);
         using var json = await SendAsync(request, ct);

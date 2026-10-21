@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Gannet.Core.Configuration;
 using Gannet.Core.Services;
@@ -28,14 +29,21 @@ internal sealed class FirecrawlSearch(HttpClient http, string name, ServiceOptio
         var request = PostJson($"{endpoint}/v2/search", new { query = Clip(query), limit = Math.Clamp(maxResults, 1, MaxResultsAllowed) });
 
         // The key goes in the Authorization header only. Keyless mode sends no header at all, so a configured key is dropped when Keyless is set.
-        if (!string.IsNullOrWhiteSpace(Options.ApiKey) && !Options.Keyless)
+        if (!IsKeyless)
         {
-            request.Headers.Authorization = new("Bearer", Options.ApiKey);
+            request.Headers.Authorization = new("Bearer", Options.ApiKey!);
         }
 
         using var json = await SendAsync(request, ct);
         return Take(json.RootElement.Prop("data").Prop("web").Items().Select(Map), maxResults);
     }
+
+    private bool IsKeyless => string.IsNullOrWhiteSpace(Options.ApiKey) || Options.Keyless;
+
+    // Keyless use is capped per IP address per day and the docs say exceeding the cap returns a 429, so with no key a 429 is a quota error. With a key a 429
+    // is the per-minute plan rate or concurrency limit, which stays a rate limit.
+    protected override Task<bool> IsQuotaResponseAsync(HttpResponseMessage response, CancellationToken ct) =>
+        Task.FromResult(IsKeyless && response.StatusCode == HttpStatusCode.TooManyRequests);
 
     // Cut at the documented length without leaving half of a surrogate pair at the end.
     private static string Clip(string query)

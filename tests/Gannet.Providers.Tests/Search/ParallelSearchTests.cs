@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using Gannet.Core.Configuration;
@@ -51,6 +50,18 @@ public class ParallelSearchTests
         Assert.False(body.TryGetProperty("max_results", out _));
     }
 
+    // Documented: advanced_settings.excerpt_settings.max_chars_per_result is an upper bound on excerpt characters per URL. Without it the excerpts are unbounded.
+    [Fact]
+    public async Task Bounds_the_excerpts_per_result()
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json(Fixture));
+        await Parallel(handler).SearchAsync("q", 5, CancellationToken.None);
+
+        var settings = JsonDocument.Parse(Assert.Single(handler.Requests).Body!).RootElement.GetProperty("advanced_settings");
+        Assert.Equal(1500, settings.GetProperty("excerpt_settings").GetProperty("max_chars_per_result").GetInt32());
+        Assert.Equal(5, settings.GetProperty("max_results").GetInt32());
+    }
+
     [Fact]
     public async Task Missing_key_is_an_auth_error_before_any_request()
     {
@@ -78,7 +89,7 @@ public class ParallelSearchTests
         await Parallel(handler).SearchAsync("q", asked, CancellationToken.None);
 
         var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body!).RootElement;
-        Assert.Equal(sent.ToString(CultureInfo.InvariantCulture), body.GetProperty("advanced_settings").GetProperty("max_results").GetInt32().ToString(CultureInfo.InvariantCulture));
+        Assert.Equal(sent, body.GetProperty("advanced_settings").GetProperty("max_results").GetInt32());
     }
 
     [Theory]
