@@ -50,10 +50,19 @@ internal static class PublicAddressGuard
             return IsPublicV4(bytes[12..]);
         }
 
-        return (bytes[0] & 0xFE) != 0xFC                                     // fc00::/7
-            && !(bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80)              // fe80::/10
-            && bytes[0] != 0xFF                                              // ff00::/8
-            && !(bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0D && bytes[3] == 0xB8); // 2001:db8::/32
+        // 6to4 (2002::/16) carries an IPv4 address in bits 16 to 47, and that address decides.
+        if (bytes[0] == 0x20 && bytes[1] == 0x02)
+        {
+            return IsPublicV4(bytes.AsSpan(2, 4));
+        }
+
+        return (bytes[0] & 0xFE) != 0xFC                                                         // fc00::/7
+            && !(bytes[0] == 0xFE && (bytes[1] & 0xC0) is 0x80 or 0xC0)                           // fe80::/10 and fec0::/10
+            && bytes[0] != 0xFF                                                                  // ff00::/8
+            && !(bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0D && bytes[3] == 0xB8)    // 2001:db8::/32
+            && !(bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x00 && bytes[3] == 0x00)    // 2001::/32 (Teredo)
+            && !(bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xFF && bytes[3] == 0x9B && bytes[4] == 0x00 && bytes[5] == 0x01) // 64:ff9b:1::/48
+            && !(bytes[0] == 0x01 && bytes.AsSpan(1, 7).IndexOfAnyExcept((byte)0) < 0);           // 100::/64
     }
 
     /// <summary>Throws <see cref="ServiceFailedException"/> unless the address is http or https, has no userinfo and resolves only to public addresses.</summary>
@@ -71,7 +80,7 @@ internal static class PublicAddressGuard
             throw new ServiceFailedException(Service, "Addresses that carry a login are not read.");
         }
 
-        var host = url.DnsSafeHost.TrimEnd('.');
+        var host = url.IdnHost.TrimEnd('.');
         if (IPAddress.TryParse(host, out var literal))
         {
             if (!IsPublic(literal))
@@ -135,8 +144,12 @@ internal static class PublicAddressGuard
             }
         }
 
-        throw new ServiceFailedException(Service, $"{endPoint.Host.TrimEnd('.')} could not be reached.");
+        throw Unreachable(endPoint.Host);
     }
+
+    /// <summary>Never carries an IP address: for an IP-literal host the message does not name it.</summary>
+    public static ServiceFailedException Unreachable(string host) =>
+        new(Service, IPAddress.TryParse(host, out _) ? "The page address could not be reached." : $"{host.TrimEnd('.')} could not be reached.");
 
     private static ServiceFailedException NotPublic(string host) =>
         new(Service, IPAddress.TryParse(host, out _) ? "The page address is not a public address." : $"{host.TrimEnd('.')} is not a public address");
