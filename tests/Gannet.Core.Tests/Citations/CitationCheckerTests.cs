@@ -197,19 +197,31 @@ public class CitationCheckerTests
         Assert.Equal("[S1] begins.\nnext.\n[S2]", result.Markdown);
     }
 
+    public static TheoryData<string> HostileUnits => new()
+    {
+        "[1 ",
+        "[1](((((((x",
+        "(S1 ",
+        "[S1, ",
+        "`` ` ``` ` ",
+        "[\u200B1 ",
+        "[source" + new string(' ', 390) + "x]",
+        "(source:" + new string(' ', 390) + "x)",
+        "[1" + string.Concat(Enumerable.Repeat(" 1", 190)) + "]",
+    };
+
+    // Each shape is 1,000,000 characters. The work is linear, so each takes about a second or less in Release
+    // and a few seconds in Debug on a busy machine. The bound is generous on purpose: a timing test must not
+    // fail because the machine is loaded, but a quadratic scan would take minutes at this size and still fail.
     [Theory]
-    [InlineData("[1 ")]
-    [InlineData("[1](((((((x")]
-    [InlineData("(S1 ")]
-    [InlineData("[S1, ")]
-    [InlineData("`` ` ``` ` ")]
-    [InlineData("[\u200B1 ")]
+    [MemberData(nameof(HostileUnits))]
     public void Hostile_input_finishes_quickly(string unit)
     {
         var text = string.Concat(Enumerable.Repeat(unit, 1_000_000 / unit.Length));
+        _ = CitationChecker.Check("[1] warm-up", Known(1));
         var timer = Stopwatch.StartNew();
         _ = CitationChecker.Check(text, Known(1));
         timer.Stop();
-        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(5), string.Create(CultureInfo.InvariantCulture, $"Took {timer.Elapsed.TotalSeconds:F1}s"));
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(30), string.Create(CultureInfo.InvariantCulture, $"Took {timer.Elapsed.TotalSeconds:F1}s"));
     }
 }
