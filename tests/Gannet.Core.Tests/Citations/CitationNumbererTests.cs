@@ -32,10 +32,10 @@ public class CitationNumbererTests
     [Fact]
     public void Citations_in_code_stay_literal_and_prose_ones_are_numbered()
     {
-        var markdown = "Write `[S1]` like this [S2].\n\n```\n[S1] in a fence\n```\n\nThen [S1].";
+        var markdown = "Write `[S1]` like this [S2].\n\n```\n[S1] in a fence\n```\n\n~~~\n[S1] in a tilde fence\n~~~\n\nThen [S1].";
         var numbered = CitationNumberer.Number([new("A", markdown)], [S(1), S(2)], CitationStyles.Get("apa"), Accessed);
 
-        Assert.Equal("Write `[S1]` like this [1].\n\n```\n[S1] in a fence\n```\n\nThen [2].", numbered.Sections[0].Markdown);
+        Assert.Equal("Write `[S1]` like this [1].\n\n```\n[S1] in a fence\n```\n\n~~~\n[S1] in a tilde fence\n~~~\n\nThen [2].", numbered.Sections[0].Markdown);
         Assert.Equal([new SourceId(2), new SourceId(1)], numbered.References.Select(r => r.Source));
     }
 
@@ -45,6 +45,35 @@ public class CitationNumbererTests
         var numbered = CitationNumberer.Number([new("A", "Only `[S1]` in code.")], [S(1)], CitationStyles.Get("apa"), Accessed);
 
         Assert.Equal("Only `[S1]` in code.", numbered.Sections[0].Markdown);
+        Assert.Empty(numbered.References);
+    }
+
+    [Fact]
+    public void A_citation_for_an_unknown_source_is_dropped()
+    {
+        var numbered = CitationNumberer.Number([new("A", "A [S9] B [S1].")], [S(1)], CitationStyles.Get("apa"), Accessed);
+
+        Assert.Equal("A  B [1].", numbered.Sections[0].Markdown);
+        Assert.Equal([new SourceId(1)], numbered.References.Select(r => r.Source));
+    }
+
+    [Theory]
+    [InlineData("[S99999999999] and [S1]", " and [1]")]
+    [InlineData("[S01] and [S1]", " and [1]")]
+    [InlineData("[S01]", "")]
+    public void A_malformed_citation_is_dropped_not_thrown(string markdown, string expected)
+    {
+        var numbered = CitationNumberer.Number([new("A", markdown)], [S(1)], CitationStyles.Get("apa"), Accessed);
+
+        Assert.Equal(expected, numbered.Sections[0].Markdown);
+    }
+
+    [Fact]
+    public void A_non_ascii_digit_is_not_a_citation()
+    {
+        var numbered = CitationNumberer.Number([new("A", "x [S\u0661] y")], [S(1)], CitationStyles.Get("apa"), Accessed);
+
+        Assert.Equal("x [S\u0661] y", numbered.Sections[0].Markdown);
         Assert.Empty(numbered.References);
     }
 }

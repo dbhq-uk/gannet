@@ -13,7 +13,7 @@ public sealed record NumberedSections(IReadOnlyList<ReportSection> Sections, IRe
 /// </summary>
 public static partial class CitationNumberer
 {
-    [GeneratedRegex(@"\[S(?<n>\d+)\]")]
+    [GeneratedRegex(@"\[(?<id>S[0-9]+)\]")]
     private static partial Regex SourceCitation();
 
     public static NumberedSections Number(IReadOnlyList<ReportSection> sections, IReadOnlyList<Source> sources, ICitationStyle style, DateOnly accessed)
@@ -24,10 +24,10 @@ public static partial class CitationNumberer
 
         string Replace(Match m)
         {
-            var id = new SourceId(int.Parse(m.Groups["n"].Value, CultureInfo.InvariantCulture));
-            if (!byId.TryGetValue(id, out var source))
+            // CitationChecker has already removed anything malformed or unknown; this drops it rather than throw.
+            if (!SourceId.TryParse(m.Groups["id"].Value, out var id) || !byId.TryGetValue(id, out var source))
             {
-                return string.Empty; // already removed by CitationChecker; defensive only
+                return string.Empty;
             }
 
             if (!numbers.TryGetValue(id, out var number))
