@@ -21,7 +21,7 @@ public sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var headers = request.Headers.Concat(request.Content?.Headers ?? Enumerable.Empty<KeyValuePair<string, IEnumerable<string>>>())
-            .ToDictionary(h => h.Key, h => string.Join(",", h.Value), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(h => h.Key, h => string.Join(h.Key.Equals("User-Agent", StringComparison.OrdinalIgnoreCase) ? " " : ",", h.Value), StringComparer.OrdinalIgnoreCase);
         var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
         Requests.Add(new RecordedRequest(request.Method, request.RequestUri!, headers, body));
         return respond(request);
