@@ -25,6 +25,11 @@ internal sealed class SearxngSearch : SearchProviderBase
 
     public override async Task<IReadOnlyList<SearchHit>> SearchAsync(string query, int maxResults, CancellationToken ct)
     {
+        if (maxResults <= 0)
+        {
+            return [];
+        }
+
         var url = $"{endpoint}/search?q={Uri.EscapeDataString(query)}&format=json&categories=general";
         try
         {
@@ -33,7 +38,7 @@ internal sealed class SearxngSearch : SearchProviderBase
         }
         catch (AuthRequiredException)
         {
-            throw new ServiceFailedException(DisplayName, "SearXNG refused JSON output (403). Add json under search.formats in its settings.yml.");
+            throw new ServiceFailedException(DisplayName, "SearXNG refused the request (401 or 403). If you run it, enable the json format in settings.yml (search.formats) and check any proxy in front of it.");
         }
     }
 

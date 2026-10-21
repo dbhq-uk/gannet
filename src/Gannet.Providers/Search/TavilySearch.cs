@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Gannet.Core.Configuration;
 using Gannet.Core.Services;
@@ -8,7 +9,7 @@ namespace Gannet.Providers.Search;
 /// <summary>Tavily search. With no key it uses keyless mode, the zero-setup default (rate limited, best effort).</summary>
 internal sealed class TavilySearch(HttpClient http, string name, ServiceOptions options) : SearchProviderBase(http, name, options)
 {
-    // Tavily accepts 0 to 20 results per call; 0 would return nothing, so the floor is 1.
+    // Tavily accepts at most 20 results per call.
     private const int MaxResultsAllowed = 20;
 
     public override string Type => "tavily";
@@ -22,6 +23,11 @@ internal sealed class TavilySearch(HttpClient http, string name, ServiceOptions 
 
     public override async Task<IReadOnlyList<SearchHit>> SearchAsync(string query, int maxResults, CancellationToken ct)
     {
+        if (maxResults <= 0)
+        {
+            return [];
+        }
+
         var endpoint = (Options.Endpoint ?? "https://api.tavily.com").TrimEnd('/');
         var request = PostJson($"{endpoint}/search", new
         {
@@ -47,6 +53,9 @@ internal sealed class TavilySearch(HttpClient http, string name, ServiceOptions 
         using var json = await SendAsync(request, ct);
         return Take(json.RootElement.Prop("results").Items().Select(Map), maxResults);
     }
+
+    // Documented by Tavily: 432 is the plan limit, 433 the pay-as-you-go limit.
+    protected override bool IsQuotaStatus(HttpStatusCode status) => (int)status is 432 or 433;
 
     private static SearchHit? Map(JsonElement r)
     {

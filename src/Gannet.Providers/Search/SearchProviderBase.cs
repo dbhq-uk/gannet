@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Gannet.Core.Configuration;
@@ -24,6 +25,9 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
 
     public abstract Task<IReadOnlyList<SearchHit>> SearchAsync(string query, int maxResults, CancellationToken ct);
 
+    /// <summary>True for a status this service uses for a plan or credit limit, which is a quota error and not a plain failure.</summary>
+    protected virtual bool IsQuotaStatus(HttpStatusCode status) => false;
+
     protected string RequireKey() =>
         string.IsNullOrWhiteSpace(Options.ApiKey)
             ? throw new AuthRequiredException(DisplayName, $"{DisplayName} needs an API key: set Gannet:Search:{Name}:ApiKey.")
@@ -37,11 +41,20 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
         using (request)
         {
             using var response = await Http.SendAsync(request, ct);
+            if (IsQuotaStatus(response.StatusCode))
+            {
+                throw new QuotaExhaustedException(DisplayName, $"{DisplayName} says the plan or credit limit is reached ({(int)response.StatusCode}).");
+            }
+
             await HttpErrors.EnsureSuccessAsync(response, DisplayName, website: false, ct);
             return await JsonRead.ParseAsync(response, DisplayName, ct);
         }
     }
 
-    protected static IReadOnlyList<SearchHit> Take(IEnumerable<SearchHit?> hits, int maxResults) =>
-        [.. hits.OfType<SearchHit>().Take(maxResults)];
+    /// <summary>Drops hits with a URL already seen (the first one stays), then takes at most maxResults.</summary>
+    protected static IReadOnlyList<SearchHit> Take(IEnumerable<SearchHit?> hits, int maxResults)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return [.. hits.OfType<SearchHit>().Where(h => seen.Add(h.Url.AbsoluteUri)).Take(maxResults)];
+    }
 }
