@@ -233,6 +233,81 @@ public class RunStoreTests
     }
 
     [Fact]
+    public async Task A_missing_index_is_rebuilt_from_the_run_records()
+    {
+        var store = Store();
+        var first = Run("local", "One?", RunStatus.Completed, time.GetUtcNow());
+        var second = Run("local", "Two?", RunStatus.Completed, time.GetUtcNow().AddMinutes(1));
+        await store.SaveAsync(first, CancellationToken.None);
+        await store.SaveAsync(second, CancellationToken.None);
+        await blobs.DeleteAsync("runs/index.json", CancellationToken.None);
+
+        var listed = await store.ListAsync(null, CancellationToken.None);
+
+        Assert.Equal([second.Id, first.Id], listed.Select(s => s.Id));
+        Assert.NotNull(await blobs.GetAsync("runs/index.json", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task An_empty_store_is_scanned_once_and_then_has_an_index()
+    {
+        var counting = new CountingBlobStore(blobs);
+        var store = new RunStore(counting, time);
+
+        Assert.Empty(await store.ListAsync(null, CancellationToken.None));
+        Assert.Equal(1, counting.Scans);
+        Assert.Empty(await store.ListAsync(null, CancellationToken.None));
+        Assert.Equal(1, counting.Scans);
+    }
+
+    [Fact]
+    public async Task Rebuild_skips_a_record_that_cannot_be_read_safely()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "gannet-runs-" + Guid.NewGuid().ToString("N"));
+        var outside = Path.Combine(Path.GetTempPath(), "gannet-outside-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new RunStore(new LocalDiskBlobStore(root), time);
+            var good = Run("local", "Good?", RunStatus.Completed, time.GetUtcNow());
+            await store.SaveAsync(good, CancellationToken.None);
+            var linked = RunIds.New();
+            Directory.CreateDirectory(Path.Combine(root, "runs", linked));
+            await File.WriteAllTextAsync(outside, "{}");
+            try
+            {
+                File.CreateSymbolicLink(Path.Combine(root, "runs", linked, "run.json"), outside);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+            {
+                return; // creating symlinks is not permitted here
+            }
+
+            await store.RebuildIndexAsync(CancellationToken.None);
+
+            Assert.Equal([good.Id], (await store.ListAsync(null, CancellationToken.None)).Select(s => s.Id));
+        }
+        finally
+        {
+            File.Delete(outside);
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task An_index_of_the_wrong_shape_is_rebuilt()
+    {
+        var store = Store();
+        var run = Run("local", "Q?", RunStatus.Completed, time.GetUtcNow());
+        await store.SaveAsync(run, CancellationToken.None);
+        await blobs.PutAsync("runs/index.json", Encoding.UTF8.GetBytes("{\"a\":1}"), CancellationToken.None);
+
+        Assert.Equal([run.Id], (await store.ListAsync(null, CancellationToken.None)).Select(s => s.Id));
+    }
+
+    [Fact]
     public async Task Concurrent_saves_of_one_run_leave_the_index_and_run_record_in_step()
     {
         var store = new RunStore(new YieldingBlobStore(blobs), time);
@@ -365,6 +440,29 @@ public class RunStoreTests
         }
 
         public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct) => inner.ListAsync(prefix, ct);
+
+        public Task DeleteAsync(string key, CancellationToken ct) => inner.DeleteAsync(key, ct);
+    }
+
+    private sealed class CountingBlobStore(IBlobStore inner) : IBlobStore
+    {
+        private int scans;
+
+        public int Scans => Volatile.Read(ref scans);
+
+        public Task PutAsync(string key, ReadOnlyMemory<byte> content, CancellationToken ct) => inner.PutAsync(key, content, ct);
+
+        public Task<byte[]?> GetAsync(string key, CancellationToken ct) => inner.GetAsync(key, ct);
+
+        public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct)
+        {
+            if (prefix == "runs/")
+            {
+                Interlocked.Increment(ref scans);
+            }
+
+            return inner.ListAsync(prefix, ct);
+        }
 
         public Task DeleteAsync(string key, CancellationToken ct) => inner.DeleteAsync(key, ct);
     }
