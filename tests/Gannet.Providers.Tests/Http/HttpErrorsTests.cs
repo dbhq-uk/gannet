@@ -110,4 +110,23 @@ public class HttpErrorsTests
         response.Headers.Add("cf-mitigated", "something-else");
         await HttpErrors.EnsureSuccessAsync(response, "Reader", true, CancellationToken.None);
     }
+
+    [Fact]
+    public async Task The_challenge_branch_is_a_faulted_task_not_a_synchronous_throw()
+    {
+        var response = Response(HttpStatusCode.OK);
+        response.Headers.Add("cf-mitigated", "challenge");
+        var task = HttpErrors.EnsureSuccessAsync(response, "Reader", true, CancellationToken.None);
+        Assert.True(task.IsFaulted);
+        await Assert.ThrowsAsync<ChallengeDetectedException>(() => task);
+    }
+
+    [Fact]
+    public void An_already_cancelled_token_gives_a_cancelled_task()
+    {
+        using var source = new CancellationTokenSource();
+        source.Cancel();
+        var task = HttpErrors.EnsureSuccessAsync(Response(HttpStatusCode.OK), "Brave", false, source.Token);
+        Assert.True(task.IsCanceled);
+    }
 }
