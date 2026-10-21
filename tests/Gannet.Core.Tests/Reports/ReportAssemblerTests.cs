@@ -95,6 +95,63 @@ public class ReportAssemblerTests
     }
 
     [Fact]
+    public void Headings_inside_fenced_code_are_left_alone()
+    {
+        var body = "## Outside\n\n```bash\n# comment\n## two\n```\n\n~~~\n# tilde comment\n## tilde two\n~~~\n\nText [S1].";
+        var report = ReportAssembler.Assemble("Q", Plan, [new("Background", body)], Sources, CitationStyles.Get("apa"), new DateOnly(2026, 10, 21));
+        Assert.Contains("### Outside\n\n```bash\n# comment\n## two\n```\n\n~~~\n# tilde comment\n## tilde two\n~~~\n\nText [1].", report.Markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Question_is_flattened_to_one_line_and_loses_closing_hashes()
+    {
+        var report = ReportAssembler.Assemble("Line one\nline two #", Plan, [new("Background", "Text [S1].")], Sources, CitationStyles.Get("apa"), new DateOnly(2026, 10, 21));
+        Assert.StartsWith("# Line one line two\n\n", report.Markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Question_keeps_a_hash_that_belongs_to_a_word()
+    {
+        var report = ReportAssembler.Assemble("Is C#", Plan, [new("Background", "Text [S1].")], Sources, CitationStyles.Get("apa"), new DateOnly(2026, 10, 21));
+        Assert.StartsWith("# Is C#\n\n", report.Markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Section_titles_and_objectives_cannot_split_lines_or_inject_headings()
+    {
+        ResearchPlan plan = new("Topic", ["Find A\n## Injected", "Find  B"], [new PlannedQuery("q", "p")], ["Background"]);
+        var report = ReportAssembler.Assemble("Q", plan, [new("Back\n\n## ground", "Text [S1].")], Sources, CitationStyles.Get("apa"), new DateOnly(2026, 10, 21));
+        Assert.Contains("1. Find A ## Injected\n2. Find B\n", report.Markdown, StringComparison.Ordinal);
+        Assert.Contains("\n## Back ## ground\n\nText [1].", report.Markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n## Injected", report.Markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Coverage_counts_a_paragraph_that_starts_with_a_hash_but_is_not_a_heading()
+    {
+        Assert.Equal(1.0, ReportAssembler.Coverage(["#1 tip [S1]"]));
+        Assert.Equal(0.0, ReportAssembler.Coverage(["#1 tip"]));
+    }
+
+    [Fact]
+    public void Coverage_still_skips_real_headings()
+    {
+        Assert.Equal(1.0, ReportAssembler.Coverage(["# Title\n\n###### Deep\n\n#\n\nA [S1]"]));
+    }
+
+    [Theory]
+    [InlineData("---")]
+    [InlineData("***")]
+    [InlineData("___")]
+    [InlineData("- - -")]
+    [InlineData("_____")]
+    [InlineData("  * * *  ")]
+    public void Coverage_does_not_count_a_thematic_break(string rule)
+    {
+        Assert.Equal(1.0, ReportAssembler.Coverage([$"A [S1]\n\n{rule}\n\nB [S1]"]));
+    }
+
+    [Fact]
     public void Report_without_citations_says_so()
     {
         var report = ReportAssembler.Assemble("Q", Plan, [new("Background", "Text.")], Sources, CitationStyles.Get("apa"), new DateOnly(2026, 10, 21));
