@@ -28,7 +28,7 @@ public static class CitationStyles
             : throw new ArgumentException($"Unknown citation style '{name}'. Use one of: {string.Join(", ", All.Select(s => s.Name))}.", nameof(name));
 
     private static string TitleOf(ReferenceSource source) =>
-        string.IsNullOrWhiteSpace(source.Title) ? source.Url.Host : source.Title.Trim();
+        string.IsNullOrWhiteSpace(source.Title) ? source.Url.Host : string.Join(' ', source.Title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     private static string Long(DateOnly date) => date.ToString("MMMM dd, yyyy", CultureInfo.InvariantCulture);
 
@@ -36,7 +36,7 @@ public static class CitationStyles
     {
         public string Name => "apa";
 
-        public string Format(ReferenceSource source, DateOnly accessed) => $"{TitleOf(source)}. (n.d.). Retrieved from {source.Url}";
+        public string Format(ReferenceSource source, DateOnly accessed) => $"{TitleOf(source)}. (n.d.). Retrieved from {source.Url.AbsoluteUri}";
     }
 
     private sealed class Mla : ICitationStyle
@@ -44,20 +44,20 @@ public static class CitationStyles
         public string Name => "mla";
 
         public string Format(ReferenceSource source, DateOnly accessed) =>
-            $"\"{TitleOf(source)}\". Web. {accessed.ToString("dd MMM. yyyy", CultureInfo.InvariantCulture)}. <{source.Url}>";
+            $"\"{TitleOf(source)}\". Web. {accessed.ToString("dd MMM. yyyy", CultureInfo.InvariantCulture)}. <{source.Url.AbsoluteUri}>";
     }
 
     private sealed class Chicago : ICitationStyle
     {
         public string Name => "chicago";
 
-        public string Format(ReferenceSource source, DateOnly accessed) => $"\"{TitleOf(source)}.\" Accessed {Long(accessed)}. {source.Url}.";
+        public string Format(ReferenceSource source, DateOnly accessed) => $"\"{TitleOf(source)}.\" Accessed {Long(accessed)}. {source.Url.AbsoluteUri}.";
     }
 
     private sealed class Ieee : ICitationStyle
     {
         public string Name => "ieee";
 
-        public string Format(ReferenceSource source, DateOnly accessed) => $"\"{TitleOf(source)},\" {source.Url}, accessed {Long(accessed)}.";
+        public string Format(ReferenceSource source, DateOnly accessed) => $"\"{TitleOf(source)},\" {source.Url.AbsoluteUri}, accessed {Long(accessed)}.";
     }
 }

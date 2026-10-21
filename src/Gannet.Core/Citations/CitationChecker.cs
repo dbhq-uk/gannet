@@ -82,7 +82,16 @@ public static class CitationChecker
                 var groupStart = IsEscaped(i, start) ? i - 1 : i;
                 var groupEnd = close + 1;
 
-                if (kind == GroupKind.Square && groupEnd < end && markdown[groupEnd] == '(' && TryFindLinkEnd(groupEnd, end, out var linkEnd))
+                if (kind == GroupKind.Square && groupEnd < end && markdown[groupEnd] == ':' && StartsLine(groupStart, copyFrom, out var indent))
+                {
+                    // "[S1]: https://..." at the start of a line would become a link reference definition once
+                    // numbered. Remove the group and the rest of the line, whether or not the source is known.
+                    var lineEnd = LineEnd(groupEnd, end);
+                    Removed.Add(new RemovedCitation(markdown[groupStart..lineEnd], "A citation must not define a link"));
+                    Copy(copyFrom, groupStart - indent);
+                    copyFrom = lineEnd;
+                }
+                else if (kind == GroupKind.Square && groupEnd < end && markdown[groupEnd] == '(' && TryFindLinkEnd(groupEnd, end, out var linkEnd))
                 {
                     Removed.Add(new RemovedCitation(markdown[groupStart..linkEnd], "A citation must not be a link; cite sources like [S3]."));
                     groupEnd = linkEnd;
@@ -97,6 +106,43 @@ public static class CitationChecker
             }
 
             Copy(copyFrom, end);
+        }
+
+        // True when only 0 to 3 spaces come before "groupStart" on its line, as the text will be written out:
+        // a citation removed just before it does not count. "indent" is how many of those spaces are still unwritten.
+        private bool StartsLine(int groupStart, int copyFrom, out int indent)
+        {
+            const int MaxIndent = 3;
+            indent = 0;
+            var k = groupStart - 1;
+            while (k >= copyFrom && markdown[k] == ' ')
+            {
+                indent++;
+                k--;
+            }
+
+            if (k >= copyFrom)
+            {
+                return markdown[k] == '\n' && indent <= MaxIndent;
+            }
+
+            // Everything pending was spaces; carry on into what is already written.
+            var tail = Output.ToString(Math.Max(0, Output.Length - (MaxIndent + 1)), Math.Min(Output.Length, MaxIndent + 1));
+            var written = tail.Length - tail.TrimEnd(' ').Length;
+            var atStart = written < tail.Length ? tail[tail.Length - written - 1] == '\n' : tail.Length == Output.Length;
+            return atStart && indent + written <= MaxIndent;
+        }
+
+        // The end of the line that holds "from", before its line break, but never past "end".
+        private int LineEnd(int from, int end)
+        {
+            var newline = markdown.IndexOf('\n', from, end - from);
+            if (newline < 0)
+            {
+                return end;
+            }
+
+            return newline > from && markdown[newline - 1] == '\r' ? newline - 1 : newline;
         }
 
         // Copies the text before the group, then the replacement. A replacement of nothing also takes one

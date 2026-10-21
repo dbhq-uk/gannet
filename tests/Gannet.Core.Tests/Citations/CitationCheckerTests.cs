@@ -79,7 +79,7 @@ public class CitationCheckerTests
     [InlineData("[S1.5]", "X.")]
     [InlineData("\\[S99\\]", "X.")]
     [InlineData("(Source 99)", "X.")]
-    [InlineData("(s99)", "X.")]
+    [InlineData("(S99)", "X.")]
     [InlineData("(S1, S2)", "X.")]
     [InlineData("[S99](http://x)", "X.")]
     [InlineData("[S1](http://x)", "X.")]
@@ -223,5 +223,85 @@ public class CitationCheckerTests
         _ = CitationChecker.Check(text, Known(1));
         timer.Stop();
         Assert.True(timer.Elapsed < TimeSpan.FromSeconds(30), string.Create(CultureInfo.InvariantCulture, $"Took {timer.Elapsed.TotalSeconds:F1}s"));
+    }
+
+    // Round brackets: "(s 172)" is a UK statute reference. Only "Source ..." and an upper-case S joined to a digit count.
+    [Theory]
+    [InlineData("A (s 172) duty.")]
+    [InlineData("A (s172) duty.")]
+    [InlineData("A (S 172) duty.")]
+    [InlineData("A (s 1, s 2) duty.")]
+    public void Statute_references_in_round_brackets_survive(string text)
+    {
+        var result = CitationChecker.Check(text, Known(1, 2));
+        Assert.Equal(text, result.Markdown);
+        Assert.Empty(result.Removed);
+    }
+
+    [Theory]
+    [InlineData("(S3)")]
+    [InlineData("(S1, S2)")]
+    [InlineData("(Source 3)")]
+    [InlineData("(source: S3)")]
+    public void Round_bracket_source_forms_are_still_removed(string citation)
+    {
+        Assert.Equal("A.", CitationChecker.Check("A " + citation + ".", Known(3)).Markdown);
+    }
+
+    // A citation at the start of a line followed by a colon would become a Markdown link reference definition.
+    [Theory]
+    [InlineData("[S1]: https://attacker.example/x", "")]
+    [InlineData("   [S1]: https://attacker.example/x", "")]
+    [InlineData("[S99]: https://attacker.example/x", "")]
+    [InlineData("[S99][S1]: https://attacker.example/x", "")]
+    [InlineData("[S1, S2]:https://attacker.example/x", "")]
+    public void A_citation_cannot_define_a_link(string line, string expectedLine)
+    {
+        var result = CitationChecker.Check("Before [S1].\n" + line + "\nAfter [S2].", Known(1, 2));
+        Assert.Equal("Before [S1].\n" + expectedLine + "\nAfter [S2].", result.Markdown);
+        Assert.Contains(result.Removed, r => r.Reason == "A citation must not define a link" || r.Reason.Contains("No source", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_removed_link_definition_reports_the_reason_and_the_line()
+    {
+        var result = CitationChecker.Check("[S1]: https://attacker.example/x\r\nNext.", Known(1));
+        Assert.Equal("\r\nNext.", result.Markdown);
+        var removed = Assert.Single(result.Removed);
+        Assert.Equal("[S1]: https://attacker.example/x", removed.Text);
+        Assert.Equal("A citation must not define a link", removed.Reason);
+        Assert.Empty(result.Cited);
+    }
+
+    [Fact]
+    public void A_citation_followed_by_a_colon_mid_line_or_deep_indent_is_left_to_the_normal_rules()
+    {
+        Assert.Equal("Note [S1]: see this.", CitationChecker.Check("Note [S1]: see this.", Known(1)).Markdown);
+        Assert.Equal("    [S1]: code", CitationChecker.Check("    [S1]: code", Known(1)).Markdown);
+    }
+
+    [Fact]
+    public void A_link_definition_inside_a_fence_is_code_and_stays()
+    {
+        const string text = "```\n[S1]: https://example.com\n```";
+        Assert.Equal(text, CitationChecker.Check(text, Known(1)).Markdown);
+    }
+
+    [Theory]
+    [InlineData("X [S\u20629].")]
+    [InlineData("X [S\u034F9].")]
+    public void Invisible_format_characters_cannot_hide_a_citation(string text)
+    {
+        var result = CitationChecker.Check(text, Known(1));
+        Assert.Equal("X.", result.Markdown);
+        Assert.Single(result.Removed);
+    }
+
+    [Fact]
+    public void Slash_to_and_a_trailing_full_stop_are_citation_separators()
+    {
+        Assert.Equal("X [S1][S2].", CitationChecker.Check("X [S1/S2].", Known(1, 2)).Markdown);
+        Assert.Equal("X [S1].", CitationChecker.Check("X [S1 to S99].", Known(1)).Markdown);
+        Assert.Equal("X.", CitationChecker.Check("X [S99.].", Known(1)).Markdown);
     }
 }
