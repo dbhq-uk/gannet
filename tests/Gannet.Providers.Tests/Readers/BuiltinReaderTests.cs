@@ -271,7 +271,7 @@ public class BuiltinReaderTests
     [InlineData("b")]
     [InlineData("span")]
     [InlineData("table")]
-    public async Task Pages_nested_deeper_than_a_thousand_are_refused_fast(string tag)
+    public async Task Pages_nested_deeper_than_the_limit_are_refused_fast(string tag)
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text("<html><body>" + Nest(tag, 20_000)));
         var started = Stopwatch.StartNew();
@@ -296,9 +296,9 @@ public class BuiltinReaderTests
     }
 
     [Theory]
-    [InlineData(1000, false)]
-    [InlineData(1001, true)]
-    public void The_depth_limit_is_a_thousand_open_elements(int depth, bool refused) =>
+    [InlineData(256, false)]
+    [InlineData(257, true)]
+    public void The_depth_limit_is_256_open_elements(int depth, bool refused) =>
         Assert.Equal(refused, HtmlDepth.Exceeds("<html><body>" + Nest("div", depth - 2) + "x"));
 
     [Fact]
@@ -353,6 +353,114 @@ public class BuiltinReaderTests
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text(Article));
         var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Reader(handler, parseTimeout: TimeSpan.Zero)));
         Assert.Equal("the page took too long to parse", error.Message);
+    }
+
+    [Fact]
+    public void The_defaults_are_a_thirty_second_parse_limit_and_a_gate_sized_to_half_the_processors()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(30), BuiltinReader.DefaultParseTimeout);
+        Assert.Equal(Math.Max(1, Environment.ProcessorCount / 2), BuiltinReader.GateSize);
+    }
+
+    // The parse gate: a process-wide cap on parse workers. A parse that timed out is abandoned, not stopped, so it keeps its slot until it ends.
+    private sealed class BlockingParse
+    {
+        private readonly ManualResetEventSlim release = new(false);
+        private readonly SemaphoreSlim entered = new(0);
+
+        public int Calls { get; private set; }
+
+        public Task Entered => entered.WaitAsync(TimeSpan.FromSeconds(10));
+
+        public void Release() => release.Set();
+
+        public (string Title, string Markdown) Parse(Uri url, string html)
+        {
+            Calls++;
+            entered.Release();
+            release.Wait(TimeSpan.FromSeconds(30));
+            return ("Blocked", "text");
+        }
+    }
+
+    private static BuiltinReader Gated(SemaphoreSlim gate, BlockingParse parse, TimeSpan timeout) =>
+        new(new StubHttpHandler(_ => StubHttpHandler.Text(Article)).Client(), false, PublicDns, timeout, gate, parse.Parse);
+
+    [Fact]
+    public async Task A_second_read_waits_for_the_slot_then_fails_busy()
+    {
+        var gate = new SemaphoreSlim(1);
+        var parse = new BlockingParse();
+        var reader = Gated(gate, parse, TimeSpan.FromMilliseconds(600));
+
+        var first = Read(reader);
+        await parse.Entered;
+        var second = Read(reader);
+        await Task.Delay(200);
+        Assert.False(second.IsCompleted, "the second read should be waiting for the slot");
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => second);
+        Assert.Equal("the reader is busy; try the next reader", error.Message);
+        Assert.Equal(1, parse.Calls);
+
+        await Assert.ThrowsAsync<ServiceFailedException>(() => first);
+        parse.Release();
+    }
+
+    [Fact]
+    public async Task A_timed_out_parse_keeps_its_slot_until_its_worker_ends()
+    {
+        var gate = new SemaphoreSlim(1);
+        var parse = new BlockingParse();
+        var reader = Gated(gate, parse, TimeSpan.FromMilliseconds(300));
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
+        Assert.Equal("the page took too long to parse", error.Message);
+        Assert.Equal(0, gate.CurrentCount);
+
+        parse.Release();
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (gate.CurrentCount == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(1, gate.CurrentCount);
+    }
+
+    [Fact]
+    public async Task A_slot_is_released_after_a_normal_parse_and_after_a_failed_one()
+    {
+        var gate = new SemaphoreSlim(1);
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Text(Article));
+        var good = new BuiltinReader(handler.Client(), false, PublicDns, null, gate, null);
+        await Read(good);
+        Assert.Equal(1, gate.CurrentCount);
+
+        var bad = new BuiltinReader(handler.Client(), false, PublicDns, null, gate, (_, _) => throw new InvalidOperationException("boom"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Read(bad));
+        Assert.Equal(1, gate.CurrentCount);
+    }
+
+    [Fact]
+    public async Task Cancellation_while_waiting_for_a_slot_is_a_cancellation()
+    {
+        var gate = new SemaphoreSlim(1);
+        var parse = new BlockingParse();
+        var reader = Gated(gate, parse, TimeSpan.FromSeconds(30));
+
+        var first = Read(reader);
+        await parse.Entered;
+        using var cts = new CancellationTokenSource();
+        var second = reader.ReadAsync(new Uri("https://birds.example/g"), 8000, cts.Token);
+        await Task.Delay(200);
+        Assert.False(second.IsCompleted);
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second);
+        Assert.Equal(1, parse.Calls);
+        parse.Release();
+        await first;
     }
 
     [Fact]

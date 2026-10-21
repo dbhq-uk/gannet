@@ -6,7 +6,7 @@ namespace Gannet.Providers.Readers;
 /// </summary>
 internal static class HtmlDepth
 {
-    public const int MaxDepth = 1000;
+    public const int MaxDepth = 256;
 
     private static readonly HashSet<string> Void = new(StringComparer.Ordinal)
     {
