@@ -12,8 +12,9 @@ models and a search engine you host yourself.
 
 ## Where it stands
 
-Started on 21 October 2026. The design is settled and the build has not
-begun, so there is nothing to run yet. This section will say when there is.
+Started on 21 October 2026. The design is settled and the build is under
+way: the solution, CI and repository files are in place. Nothing runs yet.
+This section will say when there is something to run.
 
 ## Where it comes from
 

@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Gannet.Cli/Gannet.Cli.csproj" />
+    <Project Path="src/Gannet.Core/Gannet.Core.csproj" />
+    <Project Path="src/Gannet.Providers/Gannet.Providers.csproj" />
+    <Project Path="src/Gannet.Research/Gannet.Research.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Gannet.Cli.Tests/Gannet.Cli.Tests.csproj" />
+    <Project Path="tests/Gannet.Core.Tests/Gannet.Core.Tests.csproj" />
+    <Project Path="tests/Gannet.Providers.Tests/Gannet.Providers.Tests.csproj" />
+    <Project Path="tests/Gannet.Research.Tests/Gannet.Research.Tests.csproj" />
+    <Project Path="tests/Gannet.TestSupport/Gannet.TestSupport.csproj" />
+  </Folder>
+</Solution>

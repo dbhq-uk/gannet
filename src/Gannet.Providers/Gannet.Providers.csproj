@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Gannet.Core/Gannet.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="OpenAI" />
+    <PackageReference Include="OllamaSharp" />
+    <PackageReference Include="Anthropic" />
+    <PackageReference Include="Google.GenAI" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="SmartReader" />
+    <PackageReference Include="ReverseMarkdown" />
+    <PackageReference Include="AngleSharp" />
+    <PackageReference Include="AWSSDK.S3" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Models/model-capabilities.json" LogicalName="Gannet.Providers.model-capabilities.json" Condition="Exists('Models/model-capabilities.json')" />
+    <InternalsVisibleTo Include="Gannet.Providers.Tests" />
+  </ItemGroup>
+</Project>

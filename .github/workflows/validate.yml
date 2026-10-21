@@ -1,0 +1,53 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet:
+    name: format, build, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Gannet.slnx
+
+      - name: Format check
+        run: dotnet format Gannet.slnx --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build Gannet.slnx --no-restore -c Release
+
+      - name: Test
+        run: dotnet test Gannet.slnx --no-build -c Release
+
+      - name: Dash check
+        run: |
+          if grep -rnP '[\x{2013}\x{2014}]' --include='*.md' --include='*.cs' --include='*.razor' --include='*.css' --include='*.ts' --include='*.json' --include='*.yml' . ; then
+            echo "Em or en dash found; use a plain hyphen." >&2
+            exit 1
+          fi
+
+  docker:
+    name: linux/amd64 image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Build image
+        run: |
+          if [ -f Dockerfile ]; then
+            docker build --platform linux/amd64 -t gannet:ci .
+          else
+            echo "No Dockerfile yet"
+          fi
