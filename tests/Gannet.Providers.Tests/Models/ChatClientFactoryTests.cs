@@ -1,10 +1,12 @@
 using System.Net;
+using System.Text.Json;
 using Gannet.Core.Configuration;
 using Gannet.Core.Models;
 using Gannet.Core.Services;
 using Gannet.Providers.Models;
 using Gannet.TestSupport;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Gannet.Providers.Tests.Models;
@@ -13,9 +15,10 @@ public class ChatClientFactoryTests
 {
     private const string Secret = "sk-super-secret-value";
 
-    private sealed class OneClientFactory(HttpClient client) : IHttpClientFactory
+    // A fresh HttpClient per call over one handler, as the real factory does: a client's BaseAddress cannot change after its first request.
+    private sealed class StubClientFactory(StubHttpHandler handler) : IHttpClientFactory
     {
-        public HttpClient CreateClient(string name) => client;
+        public HttpClient CreateClient(string name) => handler.Client();
     }
 
     private sealed class CapturingClient : IChatClient
@@ -43,7 +46,7 @@ public class ChatClientFactoryTests
 
     private static ChatClientFactory Factory(Dictionary<string, ModelOptions> models, StubHttpHandler? handler = null) =>
         new(Options.Create(new GannetOptions { Models = new(models, StringComparer.OrdinalIgnoreCase) }),
-            new OneClientFactory((handler ?? new StubHttpHandler(_ => StubHttpHandler.Json("{}"))).Client()));
+            new StubClientFactory(handler ?? new StubHttpHandler(_ => StubHttpHandler.Json("{}"))));
 
     [Fact]
     public async Task Ollama_context_is_capped_at_32k_unless_configured()
@@ -252,5 +255,93 @@ public class ChatClientFactoryTests
         var handle = await factory.GetAsync("sonnet", CancellationToken.None);
         Assert.DoesNotContain(Secret, handle.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain(Secret, handle.Name, StringComparison.Ordinal);
+    }
+
+    private const string OllamaShow = """{ "capabilities": ["tools"], "model_info": { "general.architecture": "qwen3", "qwen3.context_length": 262144 } }""";
+
+    private const string OllamaChat = """{ "model": "qwen3:4b", "created_at": "2026-10-22T09:00:00Z", "message": { "role": "assistant", "content": "hi" }, "done": true, "done_reason": "stop" }""";
+
+    private const string AnthropicMessage = """
+        { "id": "msg_1", "type": "message", "role": "assistant", "model": "m", "content": [ { "type": "text", "text": "hi" } ],
+          "stop_reason": "end_turn", "stop_sequence": null, "usage": { "input_tokens": 1, "output_tokens": 1 } }
+        """;
+
+    [Theory]
+    [InlineData("http://proxy.local/ollama", "http://proxy.local/ollama/api/show", "http://proxy.local/ollama/api/chat")]
+    [InlineData("http://proxy.local/ollama/", "http://proxy.local/ollama/api/show", "http://proxy.local/ollama/api/chat")]
+    [InlineData("http://localhost:11434", "http://localhost:11434/api/show", "http://localhost:11434/api/chat")]
+    public async Task The_real_ollama_client_keeps_the_path_prefix_and_carries_num_ctx(string endpoint, string showUrl, string chatUrl)
+    {
+        var handler = new StubHttpHandler(r => r.RequestUri!.AbsolutePath.EndsWith("/api/show", StringComparison.Ordinal)
+            ? StubHttpHandler.Json(OllamaShow)
+            : StubHttpHandler.Json(OllamaChat));
+        var factory = Factory(new() { ["local"] = new ModelOptions { Provider = "Ollama", Endpoint = endpoint, Model = "qwen3:4b" } }, handler);
+
+        var handle = await factory.GetAsync("local", CancellationToken.None);
+        await handle.Client.GetResponseAsync("hi");
+
+        Assert.Equal(showUrl, handler.Requests[0].Uri.ToString());
+        var chat = handler.Requests.Single(r => r.Uri.AbsolutePath.EndsWith("/api/chat", StringComparison.Ordinal));
+        Assert.Equal(chatUrl, chat.Uri.ToString());
+        var body = JsonDocument.Parse(chat.Body!).RootElement;
+        Assert.Equal(32768, body.GetProperty("options").GetProperty("num_ctx").GetInt32());
+    }
+
+    [Fact]
+    public async Task The_ollama_http_client_has_no_timeout_of_its_own_so_the_runs_cancellation_bounds_a_slow_generation()
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddGannetProviders(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        await using var provider = services.BuildServiceProvider();
+
+        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientNames.Ollama);
+
+        Assert.Equal(Timeout.InfiniteTimeSpan, client.Timeout);
+    }
+
+    [Theory]
+    [InlineData("claude-sonnet-5-5", "adaptive")]
+    [InlineData("claude-opus-4-6", "adaptive")]
+    [InlineData("claude-haiku-4-5", "enabled")]
+    [InlineData("claude-opus-4-5", "enabled")]
+    [InlineData("claude-some-older-model", "enabled")]
+    public async Task Claude_thinking_is_sent_in_the_shape_the_family_accepts(string model, string expectedType)
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json(AnthropicMessage));
+        var factory = Factory(new() { ["c"] = new ModelOptions { Provider = "Anthropic", Model = model, ApiKey = Secret } }, handler);
+
+        var handle = await factory.GetAsync("c", CancellationToken.None);
+        await handle.Client.GetResponseAsync("hi", new ChatOptions { Reasoning = new ReasoningOptions { Effort = ReasoningEffort.Medium } });
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(Secret, request.Headers["x-api-key"]);
+        var thinking = JsonDocument.Parse(request.Body!).RootElement.GetProperty("thinking");
+        Assert.Equal(expectedType, thinking.GetProperty("type").GetString());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task A_blank_key_on_a_compatible_server_becomes_not_needed(string? key)
+    {
+        var factory = Factory(new() { ["srv"] = new ModelOptions { Provider = "OpenAICompatible", Endpoint = "http://localhost:8080/v1", Model = "x", ApiKey = key, ContextWindow = 4096 } });
+        Assert.Equal(4096, (await factory.GetAsync("srv", CancellationToken.None)).Capabilities.ContextWindow);
+    }
+
+    [Fact]
+    public async Task When_a_server_answered_tool_support_comes_only_from_configuration()
+    {
+        var handler = new StubHttpHandler(r => r.RequestUri!.AbsolutePath == "/v1/models"
+            ? StubHttpHandler.Json("""{ "data": [ { "id": "gpt-oss-20b", "max_model_len": 65536 }, { "id": "gpt-4o", "max_model_len": 65536 } ] }""")
+            : StubHttpHandler.Json("{}", HttpStatusCode.NotFound));
+        var factory = Factory(new()
+        {
+            ["unset"] = new ModelOptions { Provider = "OpenAICompatible", Endpoint = "http://spark:8000/v1", Model = "gpt-oss-20b" },
+            ["set"] = new ModelOptions { Provider = "OpenAICompatible", Endpoint = "http://spark:8000/v1", Model = "gpt-4o", SupportsTools = true },
+        }, handler);
+
+        Assert.Equal(new ModelCapabilities(65536, false), (await factory.GetAsync("unset", CancellationToken.None)).Capabilities);
+        Assert.Equal(new ModelCapabilities(65536, true), (await factory.GetAsync("set", CancellationToken.None)).Capabilities);
     }
 }

@@ -94,7 +94,11 @@ public static class ProvidersServiceCollectionExtensions
                 b.AddTimeout(TimeSpan.FromSeconds(20));
             });
 
-        services.AddHttpClient(HttpClientNames.Ollama);
+        // No timeout of its own: a non-streaming Ollama generation sends no headers until it finishes, so only the run's cancellation bounds it. The model probe sets its own deadline.
+        services.AddHttpClient(HttpClientNames.Ollama, c => c.Timeout = Timeout.InfiniteTimeSpan);
+
+        // The Anthropic SDK applies its own timeout and retries; HttpClient's 100 s default would cut a long thinking response short.
+        services.AddHttpClient(HttpClientNames.Anthropic, c => c.Timeout = Timeout.InfiniteTimeSpan);
 
         // Probes a local vLLM or llama.cpp server for its context length; a server that does not answer quickly is treated as not answering.
         services.AddHttpClient(HttpClientNames.ModelServer, c => c.Timeout = TimeSpan.FromSeconds(10));

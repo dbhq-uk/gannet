@@ -6,7 +6,8 @@ namespace Gannet.Providers.Models;
 
 internal static class ModelCapabilityTable
 {
-    private sealed record Entry(string Prefix, int ContextWindow, bool SupportsTools);
+    /// <summary>Thinking is "adaptive" (the default) or "extended", for Claude families that predate adaptive thinking. Exact matches the whole model name, not a prefix.</summary>
+    private sealed record Entry(string Prefix, int ContextWindow, bool SupportsTools, string Thinking = "adaptive", bool Exact = false);
 
     private static readonly Lazy<IReadOnlyList<Entry>> Entries = new(() =>
     {
@@ -16,9 +17,15 @@ internal static class ModelCapabilityTable
     });
 
     /// <summary>The documented window for a model family, by prefix; the first entry that matches wins, so specific prefixes come before general ones.</summary>
-    public static ModelCapabilities? Lookup(string model)
-    {
-        var entry = Entries.Value.FirstOrDefault(e => model.StartsWith(e.Prefix, StringComparison.OrdinalIgnoreCase));
-        return entry is null ? null : new ModelCapabilities(entry.ContextWindow, entry.SupportsTools);
-    }
+    public static ModelCapabilities? Lookup(string model) =>
+        Find(model) is { } entry ? new ModelCapabilities(entry.ContextWindow, entry.SupportsTools) : null;
+
+    /// <summary>True for a Claude family that rejects <c>thinking.type=adaptive</c> and takes the manual <c>enabled</c> form (the Anthropic SDK's Extended mode).</summary>
+    public static bool UsesExtendedThinking(string model) =>
+        string.Equals(Find(model)?.Thinking, "extended", StringComparison.OrdinalIgnoreCase);
+
+    private static Entry? Find(string model) =>
+        Entries.Value.FirstOrDefault(e => e.Exact
+            ? string.Equals(model, e.Prefix, StringComparison.OrdinalIgnoreCase)
+            : model.StartsWith(e.Prefix, StringComparison.OrdinalIgnoreCase));
 }

@@ -62,7 +62,7 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
                     var endpoint = new Uri(model.Endpoint ?? "http://localhost:11434");
                     var (trained, tools) = await OllamaModelInfo.ReadAsync(http.CreateClient(HttpClientNames.Ollama), endpoint, model.Model, ct);
                     var context = model.ContextWindow ?? Math.Min(trained, OllamaDefaultContextCap);
-                    var client = WithNumCtx(new OllamaApiClient(endpoint, model.Model), context);
+                    var client = WithNumCtx(new OllamaApiClient(OllamaHttp(endpoint), model.Model), context);
                     return new ModelHandle(name, client, new ModelCapabilities(context, model.SupportsTools ?? tools));
                 }
 
@@ -72,7 +72,7 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
             case "openaicompatible":
                 {
                     var endpoint = model.Endpoint ?? throw new InvalidOperationException($"Model '{name}' needs an Endpoint, such as http://localhost:8080/v1.");
-                    var client = OpenAi(model.ApiKey ?? "not-needed", endpoint).GetChatClient(model.Model).AsIChatClient();
+                    var client = OpenAi(string.IsNullOrWhiteSpace(model.ApiKey) ? "not-needed" : model.ApiKey, endpoint).GetChatClient(model.Model).AsIChatClient();
 
                     // Ask a vLLM or llama.cpp server for the context it is running with, unless configuration already says.
                     var served = model.ContextWindow is null
@@ -89,8 +89,10 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
 
             case "anthropic":
                 {
-                    var anthropic = new AnthropicClient { ApiKey = RequireKey(name, model) };
-                    return Handle(name, model, anthropic.AsIChatClient(model.Model, defaultMaxOutputTokens: model.MaxOutputTokens));
+                    // Claude families that predate adaptive thinking reject thinking.type=adaptive, so the table says which form each family takes.
+                    var anthropic = new AnthropicClient { ApiKey = RequireKey(name, model), HttpClient = http.CreateClient(HttpClientNames.Anthropic) };
+                    var thinking = ModelCapabilityTable.UsesExtendedThinking(model.Model) ? AnthropicThinkingMode.Extended : AnthropicThinkingMode.Adaptive;
+                    return Handle(name, model, anthropic.AsIChatClient(model.Model, model.MaxOutputTokens, thinking));
                 }
 
             case "gemini":
@@ -104,13 +106,27 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
         }
     }
 
-    /// <summary>The window is, in order: configuration, what a local server reported, the table of documented windows, then 8,192 with no tools (fixed mode).</summary>
+    /// <summary>
+    /// A client for chat, from the pooled named client: its base address is the endpoint ending in "/", so a path prefix on a reverse proxy is kept, and it has no timeout of
+    /// its own, because a non-streaming generation sends no headers until it finishes. The run's cancellation bounds it.
+    /// </summary>
+    private HttpClient OllamaHttp(Uri endpoint)
+    {
+        var client = http.CreateClient(HttpClientNames.Ollama);
+        client.BaseAddress = ModelUrl.WithTrailingSlash(endpoint);
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        return client;
+    }
+
+    /// <summary>The window is, in order: configuration, what a local server reported, the table of documented windows, then 8,192 with no tools (fixed mode). Tools: configuration, then the table unless a server answered.</summary>
     private static ModelHandle Handle(string name, ModelOptions model, IChatClient client, int? served = null)
     {
         var known = ModelCapabilityTable.Lookup(model.Model);
+
+        // A server that answered reports a context but not tools: those come from configuration alone (vLLM and llama.cpp need flags for them).
         var capabilities = new ModelCapabilities(
             model.ContextWindow ?? served ?? known?.ContextWindow ?? UnknownModelContext,
-            model.SupportsTools ?? known?.SupportsTools ?? false);
+            model.SupportsTools ?? (served is null ? known?.SupportsTools : null) ?? false);
         return new ModelHandle(name, client, capabilities);
     }
 

@@ -15,6 +15,9 @@ internal static class ModelUrl
         return With(endpoint, path.EndsWith(VersionSegment, StringComparison.OrdinalIgnoreCase) ? path[..^VersionSegment.Length] : path, relative);
     }
 
+    /// <summary>The endpoint with its path ending in "/", so relative request paths resolve under any prefix.</summary>
+    public static Uri WithTrailingSlash(Uri endpoint) => new UriBuilder(endpoint) { Path = $"{TrimmedPath(endpoint)}/", Query = string.Empty, Fragment = string.Empty }.Uri;
+
     public static bool EndsWithVersion(Uri endpoint) => TrimmedPath(endpoint).EndsWith(VersionSegment, StringComparison.OrdinalIgnoreCase);
 
     private static string TrimmedPath(Uri endpoint) => endpoint.AbsolutePath.TrimEnd('/');
