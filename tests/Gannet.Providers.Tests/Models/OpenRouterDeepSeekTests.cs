@@ -395,7 +395,8 @@ public class OpenRouterDeepSeekTests
         var result = await OpenRouterModelInfo.ReadAsync(handler.Client(), new Uri("https://openrouter.ai/api/v1"), "acme/big", Secret, CancellationToken.None, TimeSpan.FromMilliseconds(200));
 
         Assert.Null(result);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"took {started.Elapsed}");
+        // Wide on purpose: without the deadline the read never ends, so any bound still catches the fault.
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(60), $"took {started.Elapsed}");
     }
 
     private sealed class RepeatingStream(long length) : Stream

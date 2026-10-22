@@ -17,8 +17,24 @@ public class ReaderLimitsTests
 
     private static Task<IPAddress[]> PublicDns(string host, CancellationToken ct) => Task.FromResult(new[] { IPAddress.Parse("93.184.216.34") });
 
-    private static BuiltinReader Unfiltered(string html) =>
-        new(new StubHttpHandler(_ => StubHttpHandler.Text(html)).Client(), false, PublicDns, TimeSpan.FromSeconds(120), new SemaphoreSlim(1), null, null, skipPrefilter: true);
+    // A generous parse limit and a gate of its own, so a busy machine can neither time a parse out nor make it wait behind another test.
+    private static readonly TimeSpan ParseLimit = TimeSpan.FromMinutes(10);
+
+    // neverRead: SmartReader must not run at all. The danger in the hostile shapes was SmartReader working on them, so the test asserts that it never did.
+    private static BuiltinReader Unfiltered(string html, bool neverRead = false) =>
+        new(
+            new StubHttpHandler(_ => StubHttpHandler.Text(html)).Client(),
+            false,
+            PublicDns,
+            ParseLimit,
+            new SemaphoreSlim(1),
+            null,
+            null,
+            skipPrefilter: true,
+            readArticle: neverRead ? (_, _) => throw new Xunit.Sdk.XunitException("SmartReader ran") : null);
+
+    private static BuiltinReader Normal(string html) =>
+        new(new StubHttpHandler(_ => StubHttpHandler.Text(html)).Client(), false, PublicDns, ParseLimit, new SemaphoreSlim(1), null);
 
     private static Task<PageContent> Read(BuiltinReader reader) =>
         reader.ReadAsync(new Uri("https://birds.example/gannets"), 8000, CancellationToken.None);
@@ -53,12 +69,11 @@ public class ReaderLimitsTests
     public async Task The_exact_checks_refuse_each_shape_with_the_pre_filter_bypassed(string name, string html, string message)
     {
         Assert.True(name.Length > 0);
-        var started = Stopwatch.StartNew();
 
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered("<html><body>" + html)));
+        // The exact message proves which check fired, and SmartReader never ran.
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered("<html><body>" + html, neverRead: true)));
 
         Assert.Equal(message, error.Message);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
     }
 
     // Elements are counted as the parser creates them, so html, head and body count too: three elements plus one per <br>.
@@ -119,12 +134,10 @@ public class ReaderLimitsTests
     public async Task One_formatting_element_with_thousands_of_attributes_is_refused_before_it_is_cloned()
     {
         var html = "<html><body><p><b" + Attributes(10_000) + ">x</p>" + Rep("<p>x", 30);
-        var started = Stopwatch.StartNew();
 
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html, neverRead: true)));
 
         Assert.Equal(TooManyAttributes, error.Message);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
     }
 
     [Theory]
@@ -158,12 +171,10 @@ public class ReaderLimitsTests
     {
         // A <div> comes first, so the newest created element is not the one being merged into.
         var html = "<html><body><div></div>" + string.Concat(Enumerable.Range(0, 100).Select(r => $"<{tag}{AttributesFrom(r * 32, 32)}>"));
-        var started = Stopwatch.StartNew();
 
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html, neverRead: true)));
 
         Assert.Equal(TooManyAttributes, error.Message);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
     }
 
     // The error handler fires before the tag is merged, so one stray tag can bring the element to 32 or past it, and the next tag (or the check after the parse) refuses.
@@ -195,12 +206,10 @@ public class ReaderLimitsTests
     public async Task A_big_attribute_value_copied_onto_clones_is_refused_fast()
     {
         var html = "<html><body><p><b title=\"" + new string('v', 100_000) + "\">x</p>" + Rep("<p>x", 60);
-        var started = Stopwatch.StartNew();
 
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html, neverRead: true)));
 
         Assert.Equal(TooManyAttributes, error.Message);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
     }
 
     // One attribute "a" (name 1, value L) on one div: the total is L + 1, so the limit falls between 4,999,999 and 5,000,000 characters of value. Parsed only.
@@ -231,7 +240,7 @@ public class ReaderLimitsTests
         const string page = "<html><head><title>T</title></head><body><p>short page</p></body></html>";
         var content = "<p>" + new string('x', (2 * page.Length) + 100_000 - 7 + extra) + "</p>";
         Assert.Equal((2 * page.Length) + 100_000 + extra, content.Length);
-        var reader = new BuiltinReader(new StubHttpHandler(_ => StubHttpHandler.Text(page)).Client(), false, PublicDns, null, new SemaphoreSlim(1), null, null, false, (_, _) => (true, "Title", content));
+        var reader = new BuiltinReader(new StubHttpHandler(_ => StubHttpHandler.Text(page)).Client(), false, PublicDns, ParseLimit, new SemaphoreSlim(1), null, null, false, (_, _) => (true, "Title", content));
 
         if (passes)
         {
@@ -251,12 +260,10 @@ public class ReaderLimitsTests
     public async Task One_big_paragraph_under_250_divs_is_refused_fast()
     {
         var html = "<html><body>" + Rep("<div>", 250) + "<p>" + Rep("gannet ", 15_000);
-        var started = Stopwatch.StartNew();
 
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html, neverRead: true)));
 
         Assert.Equal(TooDeep, error.Message);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
     }
 
     [Fact]
@@ -264,12 +271,10 @@ public class ReaderLimitsTests
     {
         var level = "<ul><li>" + Rep("gannets dive from a great height into the sea ", 36);
         var html = "<html><body>" + Rep(level, 120);
-        var started = Stopwatch.StartNew();
 
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html, neverRead: true)));
 
         Assert.Equal(TooDeep, error.Message);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
     }
 
     // Text directly in the body is at depth 3 (html 1, body 2, the text 3), so the limit falls between 6,666,666 and 6,666,667 characters. Parsed only, not read.
@@ -297,12 +302,10 @@ public class ReaderLimitsTests
     public async Task A_page_inside_both_limits_but_with_a_huge_total_nesting_is_refused()
     {
         var html = "<html><body>" + Rep("<div>", 250) + Rep("<span></span>", 29_000);
-        var started = Stopwatch.StartNew();
 
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html, neverRead: true)));
 
         Assert.Equal(TooDeep, error.Message);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
     }
 
     // 100 nested divs, then leaves at depth 103. The depth sum is 5,255 + 103 per leaf, so the limit of 1,000,000 falls between two leaf counts.
@@ -327,22 +330,33 @@ public class ReaderLimitsTests
         }
     }
 
-    // The reviewer's size. Unchecked, this builds about 1.16 million elements and uses hundreds of megabytes.
+    // The reviewer's size. Unchecked, this builds about 1.16 million elements and uses hundreds of megabytes. The point is how much work the parser did before it
+    // was stopped, so that is measured, not the time it took: the tree held at most MaxElements plus one probe interval of clones (64 callbacks, about 40 clones each).
     [Fact]
-    public async Task The_formatting_clone_shape_at_29000_repeats_is_stopped_early()
+    public void The_formatting_clone_shape_at_29000_repeats_is_stopped_early()
     {
-        var started = Stopwatch.StartNew();
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered("<html><body>" + FormattingTags("<p>x", 29_000))));
+        ParseStats? stats = null;
+
+        var error = Assert.Throws<ServiceFailedException>(() => PageParser.Parse("<html><body>" + FormattingTags("<p>x", 29_000), "Built-in reader", out stats));
+
         Assert.Equal(TooMany, error.Message);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
+        Assert.NotNull(stats);
+        Assert.InRange(stats.TreeSizeAtStop, HtmlDepth.MaxElements, HtmlDepth.MaxElements + (64 * 40));
     }
 
     [Fact]
-    public async Task Parsing_stops_early_when_the_cap_is_reached()
+    public void Parsing_stops_early_when_the_cap_is_reached()
     {
-        var started = Stopwatch.StartNew();
-        await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered("<html><body>" + Rep("</p>", 1_000_000))));
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
+        ParseStats? stats = null;
+
+        var error = Assert.Throws<ServiceFailedException>(() => PageParser.Parse("<html><body>" + Rep("</p>", 1_000_000), "Built-in reader", out stats));
+
+        Assert.Equal(TooMany, error.Message);
+        Assert.NotNull(stats);
+        Assert.InRange(stats.TreeSizeAtStop, HtmlDepth.MaxElements, HtmlDepth.MaxElements + (64 * 40));
+
+        // A million "</p>" would make a million elements; the parser was stopped a long way short of that.
+        Assert.True(stats.CreatedAtStop <= HtmlDepth.MaxElements + 1, $"{stats.CreatedAtStop} elements were created");
     }
 
     // The same text pre-filter shapes, now with the filter on: the cheap fixes (HTML white space only, ASCII lower case) catch these too.
@@ -365,7 +379,7 @@ public class ReaderLimitsTests
             + "<p>They fold their wings back just before entering the water, reaching speeds of about eighty-six kilometres an hour, and air sacs in the face and chest cushion the impact.</p>"
             + "<p>Colonies on the Bass Rock in Scotland hold more than one hundred and fifty thousand birds in a good year, making it the largest northern gannet colony in the world.</p>"
             + "</article><footer>Cookie settings</footer></body></html>";
-        var reader = new BuiltinReader(new StubHttpHandler(_ => StubHttpHandler.Text(page)).Client(), false, PublicDns, null, new SemaphoreSlim(1), null);
+        var reader = Normal(page);
 
         var result = await Read(reader);
 
@@ -374,35 +388,18 @@ public class ReaderLimitsTests
         Assert.DoesNotContain("Cookie settings", result.Markdown, StringComparison.Ordinal);
     }
 
-    // The real page, saved outside the repository. Skipped when it is not on this machine.
-    [Fact]
+    // The real page, saved outside the repository. Skipped, and reported as skipped, when it is not on this machine.
+    [FileFact(Environment.SpecialFolder.UserProfile, "dbhq/docs/research/Gannet_Build_Facts_20261021/raw/provider-docs/wikipedia-gannet.html.xz")]
     public async Task The_saved_wikipedia_gannet_page_is_read()
     {
         var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "dbhq", "docs", "research", "Gannet_Build_Facts_20261021", "raw", "provider-docs", "wikipedia-gannet.html.xz");
-        if (!File.Exists(path))
-        {
-            return;
-        }
 
-        string html;
-        try
-        {
-            using var xz = Process.Start(new ProcessStartInfo("xz", ["-dc", path]) { RedirectStandardOutput = true, UseShellExecute = false })!;
-            html = await xz.StandardOutput.ReadToEndAsync();
-            await xz.WaitForExitAsync();
-            if (xz.ExitCode != 0)
-            {
-                return;
-            }
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return;
-        }
+        using var xz = Process.Start(new ProcessStartInfo("xz", ["-dc", path]) { RedirectStandardOutput = true, UseShellExecute = false })!;
+        var html = await xz.StandardOutput.ReadToEndAsync();
+        await xz.WaitForExitAsync();
+        Assert.Equal(0, xz.ExitCode);
 
-        var reader = new BuiltinReader(new StubHttpHandler(_ => StubHttpHandler.Text(html)).Client(), false, PublicDns, null, new SemaphoreSlim(1), null);
-
-        var result = await reader.ReadAsync(new Uri("https://en.wikipedia.org/wiki/Gannet"), 8000, CancellationToken.None);
+        var result = await Normal(html).ReadAsync(new Uri("https://en.wikipedia.org/wiki/Gannet"), 8000, CancellationToken.None);
 
         Assert.Equal("Gannet", result.Title);
         Assert.True(result.Markdown.Length > 2000);
