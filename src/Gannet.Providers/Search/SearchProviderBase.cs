@@ -9,8 +9,6 @@ namespace Gannet.Providers.Search;
 
 internal abstract class SearchProviderBase(HttpClient http, string name, ServiceOptions options) : ISearchProvider
 {
-    private const int MaxErrorBodyBytes = 64 * 1024;
-
     protected HttpClient Http { get; } = http;
 
     protected ServiceOptions Options { get; } = options;
@@ -41,18 +39,8 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
     /// Reads a small JSON error body and returns what the predicate says about it. Anything wrong with the body (missing, too large, not JSON, bad UTF-8
     /// in a field the predicate reads) gives false, so the standard status mapping applies and nothing escapes.
     /// </summary>
-    protected async Task<bool> ReadErrorBodyAsync(HttpResponseMessage response, Func<JsonElement, bool> check, CancellationToken ct)
-    {
-        try
-        {
-            using var body = await JsonRead.ParseAsync(response, DisplayName, MaxErrorBodyBytes, ct);
-            return check(body.RootElement);
-        }
-        catch (Exception e) when (e is ServiceFailedException or InvalidOperationException or JsonException or HttpRequestException or IOException)
-        {
-            return false;
-        }
-    }
+    protected Task<bool> ReadErrorBodyAsync(HttpResponseMessage response, Func<JsonElement, bool> check, CancellationToken ct) =>
+        ServiceHttp.ReadErrorBodyAsync(response, DisplayName, check, ct);
 
     protected string RequireKey() =>
         string.IsNullOrWhiteSpace(Options.ApiKey)
@@ -66,14 +54,7 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
     {
         using (request)
         {
-            // Headers first, so the body cap in JsonRead applies before anything is buffered.
-            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (await IsQuotaResponseAsync(response, ct))
-            {
-                throw new QuotaExhaustedException(DisplayName, $"{DisplayName} says the plan or credit limit is reached ({(int)response.StatusCode}).");
-            }
-
-            await HttpErrors.EnsureSuccessAsync(response, DisplayName, website: false, ct);
+            using var response = await ServiceHttp.SendCheckedAsync(Http, request, DisplayName, IsQuotaResponseAsync, ct);
             return await JsonRead.ParseAsync(response, DisplayName, ct);
         }
     }

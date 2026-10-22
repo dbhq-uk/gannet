@@ -8,11 +8,6 @@ namespace Gannet.Providers.Search;
 /// <summary>Google results through Bright Data's SERP API (REST, never the bdata CLI). Opt-in only.</summary>
 internal sealed class BrightDataSearch : SearchProviderBase
 {
-    // Bright Data's proxy error catalogue: client_10020 is "Account is suspended" (automatic when the balance goes negative) and client_10100 is
-    // "Zone has reached usage limit". On the Direct API the outer status can be 200, so the headers are the signal. The code comes in x-brd-err-code and,
-    // in the RFC 9209 Proxy-Status header, as details="<code>: ...".
-    private static readonly string[] QuotaCodes = ["client_10020", "client_10100"];
-
     private readonly string zone;
 
     public BrightDataSearch(HttpClient http, string name, ServiceOptions options) : base(http, name, options)
@@ -66,19 +61,7 @@ internal sealed class BrightDataSearch : SearchProviderBase
     }
 
     protected override Task<bool> IsQuotaResponseAsync(HttpResponseMessage response, CancellationToken ct) =>
-        Task.FromResult(HasQuotaCode(response));
-
-    private static bool HasQuotaCode(HttpResponseMessage response)
-    {
-        if (response.Headers.TryGetValues("x-brd-err-code", out var codes) && codes.Any(c => QuotaCodes.Contains(c.Trim(), StringComparer.OrdinalIgnoreCase)))
-        {
-            return true;
-        }
-
-        // Only the code that opens the details text counts, so a code mentioned later in the message does not.
-        return response.Headers.TryGetValues("Proxy-Status", out var statuses)
-            && statuses.Any(status => QuotaCodes.Any(code => status.Contains($"details=\"{code}:", StringComparison.OrdinalIgnoreCase)));
-    }
+        Task.FromResult(BrightDataErrors.HasQuotaCode(response));
 
     // gl is a two-letter country code. Anything else, including anything that could add a parameter, falls back to gb.
     private string Country() =>
