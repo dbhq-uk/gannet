@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Gannet.Core.Services;
+using Polly.CircuitBreaker;
+using Polly.RateLimiting;
 using Polly.Timeout;
 
 namespace Gannet.Providers.Http;
@@ -10,8 +12,8 @@ internal static class ServiceHttp
     private const int MaxErrorBodyBytes = 64 * 1024;
 
     /// <summary>
-    /// Sends with the headers read first, so the body cap applies before anything is buffered. Polly's timeout (from the resilience handler) is mapped to
-    /// a typed failure here, so nothing above Providers needs to know about Polly. The caller disposes the response.
+    /// Sends with the headers read first, so the body cap applies before anything is buffered. Polly's rejections (timeout, open circuit, rate limiter, from the resilience handler) are
+    /// mapped to a typed failure here, so nothing above Providers needs to know about Polly. The caller disposes the response.
     /// </summary>
     public static async Task<HttpResponseMessage> SendAsync(HttpClient http, HttpRequestMessage request, string service, CancellationToken ct)
     {
@@ -22,6 +24,14 @@ internal static class ServiceHttp
         catch (TimeoutRejectedException)
         {
             throw new ServiceFailedException(service, $"{service} timed out");
+        }
+        catch (BrokenCircuitException)
+        {
+            throw new ServiceFailedException(service, $"{service} is failing repeatedly; gannet is pausing calls to it");
+        }
+        catch (RateLimiterRejectedException)
+        {
+            throw new ServiceFailedException(service, $"{service} is being called too fast; gannet is slowing down");
         }
     }
 

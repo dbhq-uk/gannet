@@ -39,6 +39,28 @@ public class ServiceHttpTests
     }
 
     [Fact]
+    public async Task An_open_circuit_becomes_a_service_failure_in_gannets_words()
+    {
+        using var http = new HttpClient(new ThrowingHandler(new Polly.CircuitBreaker.BrokenCircuitException("The circuit is now open and is not allowing calls.")));
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.example/x");
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => ServiceHttp.SendAsync(http, request, "Tavily", CancellationToken.None));
+
+        Assert.Equal("Tavily is failing repeatedly; gannet is pausing calls to it", error.Message);
+    }
+
+    [Fact]
+    public async Task A_rate_limiter_rejection_becomes_a_service_failure_in_gannets_words()
+    {
+        using var http = new HttpClient(new ThrowingHandler(new Polly.RateLimiting.RateLimiterRejectedException(TimeSpan.FromSeconds(1))));
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.example/x");
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => ServiceHttp.SendAsync(http, request, "Tavily", CancellationToken.None));
+
+        Assert.Equal("Tavily is being called too fast; gannet is slowing down", error.Message);
+    }
+
+    [Fact]
     public async Task A_connection_failure_is_left_alone()
     {
         using var http = new HttpClient(new ThrowingHandler(new HttpRequestException("reset")));

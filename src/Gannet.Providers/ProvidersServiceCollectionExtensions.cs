@@ -26,7 +26,7 @@ public static class ProvidersServiceCollectionExtensions
         {
             var builder = services.AddHttpClient(HttpClientNames.Search(type), c =>
             {
-                // DuckDuckGo sets its own User-Agent on the request, and a default here would add a second value.
+                // DuckDuckGo sets its own User-Agent on the request, and HttpClient would ignore this default for that request. Left off so there is one source of truth.
                 if (!string.Equals(type, "duckduckgo", StringComparison.OrdinalIgnoreCase))
                 {
                     c.DefaultRequestHeaders.UserAgent.ParseAdd(BuiltinReader.UserAgent);
@@ -57,6 +57,9 @@ public static class ProvidersServiceCollectionExtensions
             {
                 var readers = sp.GetRequiredService<IOptions<GannetOptions>>().Value.Readers;
                 var proxy = readers.Proxy;
+
+                // One definition for both uses below: a blank URL is no proxy, so the connect guard must stay on.
+                var useProxy = !string.IsNullOrWhiteSpace(proxy?.Url);
                 var handler = new SocketsHttpHandler
                 {
                     AutomaticDecompression = DecompressionMethods.All,
@@ -65,12 +68,12 @@ public static class ProvidersServiceCollectionExtensions
                     AllowAutoRedirect = false,
 
                     // Rebinding defence when there is no proxy: the connection is refused unless the address is public.
-                    ConnectCallback = proxy?.Url is { Length: > 0 } || readers.AllowPrivateAddresses ? null : PublicAddressGuard.ConnectAsync,
+                    ConnectCallback = useProxy || readers.AllowPrivateAddresses ? null : PublicAddressGuard.ConnectAsync,
                     PooledConnectionLifetime = TimeSpan.FromMinutes(5),
                 };
-                if (!string.IsNullOrWhiteSpace(proxy?.Url))
+                if (useProxy)
                 {
-                    handler.Proxy = new WebProxy(new Uri(proxy.Url))
+                    handler.Proxy = new WebProxy(new Uri(proxy!.Url!))
                     {
                         Credentials = proxy.Username is null ? null : new NetworkCredential(proxy.Username, proxy.Password),
                     };

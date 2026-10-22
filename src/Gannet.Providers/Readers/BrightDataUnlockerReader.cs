@@ -58,7 +58,7 @@ internal sealed class BrightDataUnlockerReader : RemoteReaderBase
                 throw new ServiceFailedException(DisplayName, $"The page answered {status} to {DisplayName}.");
             }
 
-            return (string.Empty, await JsonRead.ReadTextAsync(response, DisplayName, MaxBodyBytes, ct));
+            return (string.Empty, await JsonRead.ReadTextAsync(response, DisplayName, MaxBodyBytes, ct, BodyDeadline));
         }
     }
 }

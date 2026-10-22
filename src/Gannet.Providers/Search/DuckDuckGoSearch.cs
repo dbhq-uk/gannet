@@ -89,7 +89,7 @@ internal sealed class DuckDuckGoSearch : SearchProviderBase
             }
 
             await HttpErrors.EnsureSuccessAsync(response, DisplayName, website: true, ct);
-            html = await JsonRead.ReadTextAsync(response, DisplayName, MaxPageBytes, ct);
+            html = await JsonRead.ReadTextAsync(response, DisplayName, MaxPageBytes, ct, BodyDeadline);
         }
         finally
         {
