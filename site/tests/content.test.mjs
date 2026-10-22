@@ -435,9 +435,11 @@ const UNSHIPPED = [
 test("no unshipped capability is described as though it exists", () => {
   const surfaces = [...html, ["/404/", notFound], ["llms.txt", llms]];
   for (const [path, doc] of surfaces) {
-    const text = flat(doc);
+    // Lower-cased both sides: the product is "Gannet" in prose since 22 Oct
+    // 2026, and "install Gannet" must fail exactly as "install gannet" does.
+    const text = flat(doc).toLowerCase();
     for (const phrase of UNSHIPPED) {
-      assert.equal(text.includes(phrase), false, `${path}: "${phrase}" only makes sense for a released gannet`);
+      assert.equal(text.includes(phrase.toLowerCase()), false, `${path}: "${phrase}" only makes sense for a released Gannet`);
     }
   }
 });
@@ -705,7 +707,7 @@ test("llms.txt names every page and links it on this host", () => {
   for (const p of pages) {
     assert.ok(llms.includes(`${HOST}${p.path}`), `llms.txt: missing ${p.path}`);
   }
-  assert.ok(llms.startsWith("# gannet"), "llms.txt: no H1, or it is not the product name");
+  assert.ok(llms.startsWith("# Gannet"), "llms.txt: no H1, or it is not the product name");
   assert.ok(llms.includes("DBHQ"), "llms.txt: does not name the publisher");
   assert.ok(llms.toLowerCase().includes("not released"), "llms.txt: does not say gannet is unreleased");
 });
@@ -1081,5 +1083,5 @@ test("the reader is told what is counted, that there is no advertising, and wher
   assert.ok(notice.includes('href="https://dbhq.uk/privacy/#analytics"'), "the notice does not link the analytics section of the policy");
   // DBHQ is one person, and the display name is lowercase.
   assert.equal(/\bwe\b/i.test(text), false, "the notice says we");
-  assert.match(text, /\bgannet\b/);
+  assert.match(text, /\bGannet\b/);
 });

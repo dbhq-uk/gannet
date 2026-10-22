@@ -22,10 +22,11 @@ SOFTWARE.
 
 ---
 
-gannet is a C# rewrite of deep-research-agent
+Portions of Gannet are adapted from deep-research-agent
 (https://github.com/tarun7r/deep-research-agent), which is published under the
-MIT License with the following notice. Where this repository carries prompts,
-logic or structure derived from that project, this notice applies to them.
+MIT License with the following notice: the default list of trusted domains in
+src/Gannet.Core/Credibility/credibility-rules.json. The notice applies to those
+portions.
 
 MIT License
 

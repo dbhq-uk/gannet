@@ -20,7 +20,7 @@ public class CredibilityScorerTests
     [Fact]
     public void Lookalike_domain_is_not_trusted()
     {
-        // The source scored this 85 because "cnn.com" is a substring of "notcnn.com".
+        // A substring match would score this 85, because "cnn.com" is a substring of "notcnn.com".
         var score = scorer.Score(new Uri("https://notcnn.com/story"));
         Assert.Equal(55, score.Value);
         Assert.Equal(CredibilityLevel.Medium, score.Level);
@@ -48,7 +48,7 @@ public class CredibilityScorerTests
     [Fact]
     public void Shortener_rule_does_not_catch_microsoft_com()
     {
-        // The source's pattern t\.co matched "microsoft.com".
+        // A substring pattern for t.co would match "microsoft.com".
         Assert.Equal(55, scorer.Score(new Uri("https://learn.microsoft.com/en-us/dotnet/")).Value);
         Assert.Equal(35, scorer.Score(new Uri("https://t.co/abc")).Value);
     }

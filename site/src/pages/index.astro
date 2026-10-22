@@ -3,12 +3,12 @@ import { Image } from "astro:assets";
 import Base from "../layouts/Base.astro";
 import Faqs from "../components/Faqs.astro";
 import Status from "../components/Status.astro";
-import { REPO, UPSTREAM, choices, homeFaqs, nav, progress, rules, site, stages } from "../lib/site";
+import { REPO, choices, homeFaqs, nav, progress, rules, site, stages } from "../lib/site";
 import { CODE_ID, faqNode, sourceCodeNode } from "../lib/schema";
 import hero from "../assets/photo/hero-dive-1600.webp";
 import under from "../assets/photo/under-1600.webp";
 
-const title = "gannet: open-source deep research agent that cites sources";
+const title = "Gannet: open-source deep research agent that cites sources";
 const description =
   "An open-source deep research agent being built in C#. It plans, searches the web, weighs each source and cites every claim to a page it read.";
 const canonical = new URL("/", Astro.site).href;
@@ -39,7 +39,7 @@ const canonical = new URL("/", Astro.site).href;
         <a class="btn btn-primary" href={REPO}>Follow the build on GitHub<span class="btn-arrow" aria-hidden="true">&#8599;</span><span class="sr-only"> (external site)</span></a>
         <a class="btn btn-glass" href="#guides">Read the guides</a>
       </div>
-      <p class="glass-label" id="rules-label">The rules gannet is built to keep</p>
+      <p class="glass-label" id="rules-label">The rules Gannet is built to keep</p>
       <ul class="glass-row" role="list" aria-labelledby="rules-label">
         {rules.map((r) => (
           <li class="glass">
@@ -56,7 +56,7 @@ const canonical = new URL("/", Astro.site).href;
       <div class="editorial-head block-h">
         <h2>Four stages, one workflow</h2>
         <p class="lead">
-          gannet is designed to run a question through four stages on Microsoft Agent Framework Workflows, the shape it takes from&#32;<a class="lnk" href={UPSTREAM}>deep-research-agent<span class="out-glyph" aria-hidden="true">&#8599;</span><span class="sr-only"> (external site)</span></a>.
+          Gannet is designed to run a question through four stages on Microsoft Agent Framework Workflows.
           This is what the workflow is being built to do.
         </p>
       </div>
@@ -80,7 +80,7 @@ const canonical = new URL("/", Astro.site).href;
       <p class="mono-label">Already in the code</p>
       <h2>Citations it cannot make up</h2>
       <p>
-        A model asked to cite its sources will sometimes cite one it never read. So gannet is designed never to ask
+        A model asked to cite its sources will sometimes cite one it never read. So Gannet is designed never to ask
         the model to number anything. Each source is to get an ID the moment a tool fetches it,&#32;<code>S1</code>,&#32;<code>S2</code>&#32;
         and on, and the writer cites those IDs. Then&#32;<code>CitationChecker</code>&#32;removes any ID the run never
         fetched, and&#32;<code>CitationNumberer</code>&#32;turns the rest into numbers and a reference list.
@@ -98,7 +98,7 @@ const canonical = new URL("/", Astro.site).href;
       <div class="editorial-head block-h">
         <h2>Your model, your search service</h2>
         <p class="lead">
-          Keys stay in configuration and the choice is made per run. These are the providers gannet is being built to
+          Keys stay in configuration and the choice is made per run. These are the providers Gannet is being built to
           support. Ollama with a SearXNG instance you host is the path with no keys at all.
         </p>
       </div>
@@ -120,7 +120,7 @@ const canonical = new URL("/", Astro.site).href;
       <div class="editorial-head block-h">
         <h2>Where the build stands</h2>
         <p class="lead">
-          gannet is built in the open, one reviewed pull request at a time. Nothing here is a promise of a date.
+          Gannet is built in the open, one reviewed pull request at a time. Nothing here is a promise of a date.
         </p>
       </div>
       <div class="choice-grid">

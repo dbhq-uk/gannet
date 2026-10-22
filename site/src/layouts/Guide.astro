@@ -3,8 +3,8 @@
 // page file names the slug and what the article is about.
 //
 // A guide is a guide, not a landing page (terraken's rule, kept): the
-// best answer to its query whether or not the reader ever runs gannet, with
-// gannet in one section near the end.
+// best answer to its query whether or not the reader ever runs Gannet, with
+// Gannet in one section near the end.
 import Base from "./Base.astro";
 import { nav } from "../lib/site";
 import { faqNode, guideArticle } from "../lib/schema";
@@ -39,7 +39,7 @@ const others = nav.filter((n) => n.path !== path);
 >
   <header class="page-head">
     <div class="container">
-      <nav class="crumb" aria-label="Breadcrumb"><a href="/">gannet</a></nav>
+      <nav class="crumb" aria-label="Breadcrumb"><a href="/">Gannet</a></nav>
       <h1 class="guide-h1">{frontmatter.h1}</h1>
       <p class="lead">{frontmatter.description}</p>
       <p class="guide-meta">Updated <time datetime={modified}>{new Date(modified + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</time></p>
@@ -61,7 +61,7 @@ const others = nav.filter((n) => n.path !== path);
       <aside class="onward" aria-labelledby="onward-label">
         <p class="onward-label mono-label" id="onward-label">More guides</p>
         <ul class="onward-list" role="list">
-          <li class="onward-card"><a href="/">gannet</a><p>The deep research agent these guides are published beside, and where its build stands.</p></li>
+          <li class="onward-card"><a href="/">Gannet</a><p>The deep research agent these guides are published beside, and where its build stands.</p></li>
           {others.map((n) => <li class="onward-card"><a href={n.path}>{n.label}</a><p>{n.blurb}</p></li>)}
         </ul>
       </aside>

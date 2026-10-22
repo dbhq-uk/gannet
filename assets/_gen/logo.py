@@ -62,17 +62,34 @@ EYE_RING = ("M200 172 C200 150 216 136 236 136 C258 136 286 152 312 170"
 EYE = (236, 170, 19)
 
 
+# THE NAVY BAND. The head sits inside an inner frame, inset PAD on every side,
+# so the white never runs to the tile's edge. Added 22 Oct 2026 (Dan: "can we
+# put a bit of blue padding around the icon"), after the favicon on a dark tab
+# bar read as a white blob running off the edge: there the navy tile all but
+# disappears, and only a band of it round the head keeps the shape. 48 was
+# chosen over 72 at 16px: at 72 the head is too small to read in a tab.
+PAD = 48
+
+
 def mark_body(tile=NAVY, uid="t"):
     cx, cy, r = EYE
+    s = (512 - 2 * PAD) / 512
+    inner_r = TILE_R - PAD
+    # Rounded at the top, square at the bottom: the neck ends in a straight
+    # line across the frame, not in a curve (Dan, 22 Oct 2026: "dont like the
+    # curved bottom").
+    a, b = PAD, 512 - PAD
+    frame = (f"M{a} {a + inner_r} A{inner_r} {inner_r} 0 0 1 {a + inner_r} {a} H{b - inner_r} "
+             f"A{inner_r} {inner_r} 0 0 1 {b} {a + inner_r} V{b} H{a} Z")
     return (
-        f'<defs><clipPath id="{uid}"><rect width="512" height="512" rx="{TILE_R}"/></clipPath></defs>'
+        f'<defs><clipPath id="{uid}"><path d="{frame}"/></clipPath></defs>'
         f'<rect width="512" height="512" rx="{TILE_R}" fill="{tile}"/>'
-        f'<g clip-path="url(#{uid})">'
+        f'<g clip-path="url(#{uid})"><g transform="translate({PAD} {PAD}) scale({s:.4f})">'
         f'<path d="{HEAD}" fill="{WHITE}"/>'
         f'<path d="{JAW}" fill="{WHITE}"/>'
         f'<path d="{EYE_RING}" fill="{tile}"/>'
         f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{GOLD}"/>'
-        f'</g>'
+        f'</g></g>'
     )
 
 
@@ -86,17 +103,13 @@ def mark(size=512):
 
 def maskable(size=512):
     """A full-bleed square for Android's maskable icon: the launcher crops it
-    to its own shape, so the tile's rounded corners are dropped and the head
-    is drawn inside the 80% safe zone."""
-    cx, cy, r = EYE
+    to its own shape, so the ground is square and the tile is drawn inside the
+    80% safe zone."""
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="{size}" height="{size}">\n'
         f'  <rect width="512" height="512" fill="{NAVY}"/>\n'
-        f'  <g transform="translate(51.2 51.2) scale(0.8)">'
-        f'<rect width="512" height="512" fill="{NAVY}"/>'
-        f'<path d="{HEAD}" fill="{WHITE}"/><path d="{JAW}" fill="{WHITE}"/>'
-        f'<path d="{EYE_RING}" fill="{NAVY}"/><circle cx="{cx}" cy="{cy}" r="{r}" fill="{GOLD}"/>'
-        f'</g>\n</svg>\n'
+        f'  <g transform="translate(51.2 51.2) scale(0.8)">{mark_body(uid="m")}</g>\n'
+        f'</svg>\n'
     )
 
 

@@ -185,9 +185,9 @@ Stop when you can say all of the following about a source, in a sentence each, a
 
 If you cannot answer one of these, that is the next thing to search for. If you can answer all seven, stop. More checking has a cost. Caulfield's advice is to match the depth of your check to what you need the source for.
 
-## How gannet scores a source
+## How Gannet scores a source
 
-gannet is an open-source deep research tool that DBHQ is building in C#. It is in development and has not been released. The plan is that, given a question, it plans the research, searches the web, weighs each source and writes a report in which every claim is cited to a source the run actually fetched. The repository is at github.com/dbhq-uk/gannet (MIT licence).
+Gannet is an open-source deep research tool that DBHQ is building in C#. It is in development and has not been released. The plan is that, given a question, it plans the research, searches the web, weighs each source and writes a report in which every claim is cited to a source the run actually fetched. The repository is at github.com/dbhq-uk/gannet (MIT licence).
 
 One part already exists in merged code: a score from 0 to 100 worked out from a source's web address alone. It lives in `CredibilityScorer.cs`, with its numbers in `credibility-rules.json`. A source starts at 50. Then it gains or loses points:
 
@@ -197,7 +197,7 @@ One part already exists in merged code: a score from 0 to 100 worked out from a 
 - four or more labels in the host name, when the domain is neither trusted nor suspicious: -5
 - a path containing /papers/, /research/ or /publications/: +10
 
-A score of 70 or more is high, 40 to 69 is medium and anything lower is low. The code matches whole domains, so notcnn.com does not get the bonus meant for cnn.com. According to its tests, https://www.bbc.co.uk/news/article scores 85 and http://free-stuff.xyz/ scores 20. The idea comes from tarun7r/deep-research-agent (MIT), which gannet is rewritten from.
+A score of 70 or more is high, 40 to 69 is medium and anything lower is low. The code matches whole domains, so notcnn.com does not get the bonus meant for cnn.com. According to its tests, https://www.bbc.co.uk/news/article scores 85 and http://free-stuff.xyz/ scores 20.
 
 A domain-and-path score is a first filter, not a verdict. It cannot see who funds a site, whether a paper was retracted or whether a claim is true. A good post on a blogging platform will score low and a weak page on a trusted domain will score high. The methods in this guide are what a person does after the filter.
 
@@ -256,4 +256,3 @@ All pages were read on 21 October 2026. Copies of the text relied on are saved i
 - Help Net Security (2023). "Google Chrome will lose the lock icon for HTTPS-secured sites". https://www.helpnetsecurity.com/2023/05/03/google-chrome-https/
 - Wikipedia. "Wikipedia:Citing Wikipedia". https://en.wikipedia.org/wiki/Wikipedia:Citing_Wikipedia
 - DBHQ. Source files `src/Gannet.Core/Credibility/CredibilityScorer.cs`, `CredibilityRules.cs` and `credibility-rules.json`, and the tests in `tests/Gannet.Core.Tests/Credibility/CredibilityScorerTests.cs`. https://github.com/dbhq-uk/gannet
-- tarun7r. "deep-research-agent" (MIT). https://github.com/tarun7r/deep-research-agent

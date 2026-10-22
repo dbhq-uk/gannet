@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping. A few rules keep gannet what it is.
+Thank you for helping. A few rules keep Gannet what it is.
 
 1. **Tests first.** Every change comes with a test that failed before it. `dotnet test` must be green and `dotnet format --verify-no-changes` clean.
 2. **No result text on disk.** Search and reader results stay in memory for one run. Never write them to run records, checkpoints, logs or test fixtures. Fixtures are written by hand from each service's documented response shape.
