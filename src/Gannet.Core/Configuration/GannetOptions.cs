@@ -1,10 +1,11 @@
+using System.Text.Json.Serialization;
 using Gannet.Core.Domain;
 
 namespace Gannet.Core.Configuration;
 
 /// <summary>
 /// The "Gannet" configuration section. Keys live here and nowhere else.
-/// This type holds secrets (API keys, the S3 secret, the proxy password). It must never be serialised or logged.
+/// This type holds secrets (API keys, the S3 keys, the proxy password). It must never be logged. The secret properties are marked JsonIgnore, so serialising it leaves them out.
 /// </summary>
 public sealed class GannetOptions
 {
@@ -74,8 +75,10 @@ public sealed class S3StorageOptions
 
     public string? Bucket { get; set; }
 
+    [JsonIgnore]
     public string? AccessKeyId { get; set; }
 
+    [JsonIgnore]
     public string? SecretAccessKey { get; set; }
 
     public string Region { get; set; } = "auto";
@@ -102,6 +105,7 @@ public sealed class ProxyOptions
 
     public string? Username { get; set; }
 
+    [JsonIgnore]
     public string? Password { get; set; }
 }
 
@@ -110,6 +114,7 @@ public sealed class ServiceOptions
 {
     public string? Type { get; set; }
 
+    [JsonIgnore]
     public string? ApiKey { get; set; }
 
     public string? Endpoint { get; set; }
@@ -123,13 +128,14 @@ public sealed class ServiceOptions
 
 public sealed class ModelOptions
 {
-    /// <summary>Ollama, OpenAI, OpenAICompatible, AzureOpenAI, Anthropic or Gemini.</summary>
+    /// <summary>Ollama, OpenAI, OpenAICompatible, AzureOpenAI, Anthropic, Gemini, OpenRouter or DeepSeek.</summary>
     public string Provider { get; set; } = string.Empty;
 
     public string? Endpoint { get; set; }
 
     public string Model { get; set; } = string.Empty;
 
+    [JsonIgnore]
     public string? ApiKey { get; set; }
 
     public int? ContextWindow { get; set; }

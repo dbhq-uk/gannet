@@ -10,7 +10,7 @@ namespace Gannet.Providers.Readers;
 /// Fetches a page from this machine and extracts its main text. No third party sees the address. The page address comes from a search result
 /// or from the model, so it is checked against <see cref="PublicAddressGuard"/> before the first request and before every redirect hop.
 /// </summary>
-internal sealed class BuiltinReader : IPageReader
+internal sealed partial class BuiltinReader : IPageReader
 {
     public const string UserAgent = "Mozilla/5.0 (compatible; gannet/1.0; +https://github.com/dbhq-uk/gannet)";
 
@@ -167,7 +167,12 @@ internal sealed class BuiltinReader : IPageReader
 
         if (!isText)
         {
-            throw new ServiceFailedException(DisplayName, $"The page is {mediaType}, which the built-in reader does not read.");
+            // The server chose this text, so it is shown only when it has an ordinary shape.
+            throw new ServiceFailedException(
+                DisplayName,
+                OrdinaryMediaType().IsMatch(mediaType)
+                    ? $"The page is {mediaType}, which the built-in reader does not read."
+                    : "The page is a type the built-in reader does not read.");
         }
 
         return new Downloaded(mediaType, isHtml, body);
@@ -298,6 +303,9 @@ internal sealed class BuiltinReader : IPageReader
         var article = new SmartReader.Reader(url.ToString(), document).GetArticle();
         return (article.IsReadable, article.Title ?? string.Empty, article.Content ?? string.Empty);
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex("^[a-z0-9.+-]{1,30}/[a-z0-9.+-]{1,60}$")]
+    private static partial System.Text.RegularExpressions.Regex OrdinaryMediaType();
 
     private static bool LooksLikeChallenge(string body) =>
         body.Contains("<title>Just a moment...</title>", StringComparison.OrdinalIgnoreCase)

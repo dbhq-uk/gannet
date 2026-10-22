@@ -60,6 +60,15 @@ internal sealed class BrightDataSearch : SearchProviderBase
         }
     }
 
+    // The Direct API answers 200 when an unlock failed; the failure is in the headers, and the body is then not results.
+    protected override void InspectResponse(HttpResponseMessage response)
+    {
+        if (BrightDataErrors.HasUnlockError(response))
+        {
+            throw new ServiceFailedException(DisplayName, $"{DisplayName} could not return results.");
+        }
+    }
+
     protected override Task<bool> IsQuotaResponseAsync(HttpResponseMessage response, CancellationToken ct) =>
         Task.FromResult(BrightDataErrors.HasQuotaCode(response));
 

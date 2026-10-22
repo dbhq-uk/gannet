@@ -220,6 +220,25 @@ public class BrightDataSearchTests
         await Assert.ThrowsAsync<ServiceFailedException>(() => Create(handler).SearchAsync("q", 3, CancellationToken.None));
     }
 
+    // On the Direct API an unlock that failed still answers 200; the failure is in x-brd-error, x-brd-error-code or x-brd-err-code (the reader checks the same three).
+    [Theory]
+    [InlineData("x-brd-error")]
+    [InlineData("x-brd-error-code")]
+    [InlineData("x-brd-err-code")]
+    public async Task A_200_that_carries_a_bright_data_error_header_is_a_failure_and_not_results(string header)
+    {
+        var handler = new StubHttpHandler(_ =>
+        {
+            var response = StubHttpHandler.Json(Parsed);
+            response.Headers.Add(header, "brd-secret-detail");
+            return response;
+        });
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Create(handler).SearchAsync("q", 3, CancellationToken.None));
+
+        Assert.Equal("Bright Data SERP could not return results.", error.Message);
+    }
+
     [Fact]
     public async Task Rate_limit_is_typed()
     {

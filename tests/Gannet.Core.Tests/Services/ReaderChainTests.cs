@@ -124,6 +124,29 @@ public class ReaderChainTests
     }
 
     [Fact]
+    public async Task A_typed_error_wrapped_in_an_http_exception_keeps_its_kind_and_message()
+    {
+        var typed = new QuotaExhaustedException("Svc", "Svc says the quota or credit is used up (402).");
+        var reader = new ThrowingReader("jina", new HttpRequestException("wrapper text SECRET-WRAPPER", typed));
+
+        var outcome = await new ReaderChain([reader, Works]).ReadAsync(Url, 8000, CancellationToken.None);
+
+        var failure = Assert.Single(outcome.Failures);
+        Assert.Equal(("jina", "quota-exhausted", typed.Message), (failure.Reader, failure.Error, failure.Message));
+    }
+
+    [Fact]
+    public async Task An_http_exception_with_some_other_inner_exception_is_still_a_connection_failure()
+    {
+        var reader = new ThrowingReader("jina", new HttpRequestException("wrapper", new IOException("SECRET-INNER")));
+
+        var outcome = await new ReaderChain([reader]).ReadAsync(Url, 8000, CancellationToken.None);
+
+        Assert.Equal("failed", outcome.Failures[0].Error);
+        Assert.DoesNotContain("SECRET", outcome.Failures[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Failure_messages_never_carry_the_text_of_an_http_exception()
     {
         var reader = new ThrowingReader("jina", new HttpRequestException("body: <html>SECRET-PAGE-TEXT</html>", null, System.Net.HttpStatusCode.BadGateway));

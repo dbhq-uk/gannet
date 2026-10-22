@@ -45,6 +45,14 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
     protected Task<bool> ReadErrorBodyAsync(HttpResponseMessage response, Func<JsonElement, bool> check, CancellationToken ct) =>
         ServiceHttp.ReadErrorBodyAsync(response, DisplayName, check, ct);
 
+    /// <summary>
+    /// Called with a response that has passed the status checks, before its body is read. Override it to refuse a response that carries a failure in its headers.
+    /// Throw a typed error with gannet's own words; never copy a header into a message.
+    /// </summary>
+    protected virtual void InspectResponse(HttpResponseMessage response)
+    {
+    }
+
     protected string RequireKey() =>
         string.IsNullOrWhiteSpace(Options.ApiKey)
             ? throw new AuthRequiredException(DisplayName, $"{DisplayName} needs an API key: set Gannet:Search:{Name}:ApiKey.")
@@ -58,14 +66,28 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
         using (request)
         {
             using var response = await ServiceHttp.SendCheckedAsync(Http, request, DisplayName, IsQuotaResponseAsync, ct);
+            InspectResponse(response);
             return await JsonRead.ParseAsync(response, DisplayName, ct, BodyDeadline);
         }
     }
 
-    /// <summary>Drops hits with a URL already seen (the first one stays), then takes at most maxResults.</summary>
+    private const int MaxTitleCharacters = 300;
+    private const int MaxSnippetCharacters = 2000;
+
+    /// <summary>
+    /// Drops hits with a URL already seen (the first one stays), takes at most maxResults, and bounds what a service can put in a hit: a title is one line of at most
+    /// 300 characters, a snippet at most 2,000. They reach the model's prompt, so their size and shape are the service's to choose only within these limits.
+    /// </summary>
     protected static IReadOnlyList<SearchHit> Take(IEnumerable<SearchHit?> hits, int maxResults)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        return [.. hits.OfType<SearchHit>().Where(h => seen.Add(h.Url.AbsoluteUri)).Take(maxResults)];
+        return [.. hits.OfType<SearchHit>().Where(h => seen.Add(h.Url.AbsoluteUri)).Take(maxResults).Select(Bounded)];
     }
+
+    private static SearchHit Bounded(SearchHit hit) => hit with
+    {
+        // Any run of white space, new lines and tabs included, becomes one space.
+        Title = TextCap.Cut(string.Join(' ', hit.Title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)), MaxTitleCharacters),
+        Snippet = TextCap.Cut(hit.Snippet, MaxSnippetCharacters),
+    };
 }
