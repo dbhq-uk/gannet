@@ -53,6 +53,14 @@ export function rehypeExternal() {
       for (const child of node.children ?? []) {
         if (child.type === "element" && child.tagName === "a") {
           const href = String(child.properties?.href ?? "");
+          // A bare URL used as its own link text wraps mid-path into a wall of
+          // blue on a phone. Show the host and a short path; the href is kept.
+          if (/^https?:\/\//.test(href) && textOf(child).trim() === href) {
+            const u = new URL(href);
+            const path = (u.pathname + u.search).replace(/\/$/, "");
+            const shown = u.host.replace(/^www\./, "") + (path.length > 32 ? path.slice(0, 30) + "…" : path);
+            child.children = [t(shown)];
+          }
           if (/^https?:\/\//.test(href) && !href.startsWith("https://gannet.dbhq.uk")) {
             child.children.push(
               h("span", { className: ["out-glyph"], ariaHidden: "true" }, [t("↗")]),
@@ -74,7 +82,19 @@ export function rehypeTables() {
       node.children = node.children.map((child) => {
         if (child.type === "element" && child.tagName === "table") {
           child.properties = { ...(child.properties ?? {}), className: ["tbl"] };
-          return h("div", { className: ["tbl-wrap"] }, [child]);
+          // A comparison with more than four columns breaks out of the reading
+          // measure on a desktop, and dates never wrap at their hyphens.
+          let cols = 0;
+          const mark = (n) => {
+            for (const c of n.children ?? []) {
+              if (c.type !== "element") continue;
+              if (c.tagName === "tr" && !cols) cols = (c.children ?? []).filter((x) => x.tagName === "th" || x.tagName === "td").length;
+              if (c.tagName === "td" && /^\s*\d{4}-\d{2}-\d{2}\s*$/.test(textOf(c))) c.properties = { ...(c.properties ?? {}), className: ["nowrap"] };
+              mark(c);
+            }
+          };
+          mark(child);
+          return h("div", { className: cols > 4 ? ["tbl-wrap", "wide"] : ["tbl-wrap"] }, [child]);
         }
         walk(child);
         return child;

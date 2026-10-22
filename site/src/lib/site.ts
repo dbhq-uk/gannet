@@ -110,7 +110,7 @@ export interface Rule {
 export const rules: readonly Rule[] = [
   {
     h: "Every citation points at a page the run fetched",
-    p: "Sources are to get an ID the moment they are fetched. The writer may cite only those IDs, and the merged citation checker removes anything else.",
+    p: "By design, every source gets an ID the moment it is fetched. The writer may cite only those IDs, and the citation checker, already merged, removes anything else.",
   },
   {
     h: "No search result text is written to disk",

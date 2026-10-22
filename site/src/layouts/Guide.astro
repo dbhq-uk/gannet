@@ -6,7 +6,9 @@
 // best answer to its query whether or not the reader ever runs Gannet, with
 // Gannet in one section near the end.
 import Base from "./Base.astro";
-import { nav } from "../lib/site";
+import { Image } from "astro:assets";
+import { REPO, nav } from "../lib/site";
+import glide from "../assets/photo/glide-1600.webp";
 import { faqNode, guideArticle } from "../lib/schema";
 import { faqsFrom } from "../lib/faqs.mjs";
 import { lastmodFor } from "../lib/content-dates.mjs";
@@ -52,10 +54,19 @@ const others = nav.filter((n) => n.path !== path);
     </div>
   </header>
 
+  <div class="container">
+    <Image src={glide} alt="A gannet gliding over the sea at sunset, past a rocky headland" widths={[800, 1600]} sizes="(max-width: 1240px) 100vw, 1200px" class="guide-photo" />
+  </div>
+
   <article class="section section--tight">
     <div class="container">
       <div class="prose">
         <Content />
+      </div>
+
+      <div class="guide-close">
+        <p>Gannet is a deep research agent being built in the open, designed to cite every claim to a page it read.</p>
+        <a class="btn btn-primary" href={REPO}>Follow the build on GitHub<span class="btn-arrow" aria-hidden="true">&#8599;</span><span class="sr-only"> (external site)</span></a>
       </div>
 
       <aside class="onward" aria-labelledby="onward-label">
@@ -72,6 +83,9 @@ const others = nav.filter((n) => n.path !== path);
 <style>
   .guide-h1 { max-width: 20ch; }
   .guide-meta { margin-top: 14px; font-size: .9rem; color: var(--text-3); }
+  .guide-photo { width: 100%; height: auto; aspect-ratio: 21 / 9; object-fit: cover; border-radius: var(--r-md); }
+  .guide-close { margin-top: clamp(40px, 5vw, 60px); padding: 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
+  .guide-close p { color: var(--text); max-width: 52ch; }
   .toc-list { columns: 2; column-gap: 40px; display: block; }
   .toc-list li { margin-bottom: 7px; break-inside: avoid; }
   @media (max-width: 760px) { .toc-list { columns: 1; } }

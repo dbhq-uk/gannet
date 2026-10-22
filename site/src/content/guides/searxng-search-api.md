@@ -6,7 +6,7 @@ h1: "SearXNG search API: run it in Docker and call it as JSON"
 
 SearXNG is a free, open-source metasearch engine. Run it in Docker, enable the `json` format in `settings.yml`, and you have a free web search API at `/search?q=...&format=json`.
 
-Everything below was run on 21 October 2026 against SearXNG `2026.10.19-81371861f`, pulled as the image `searxng/searxng@sha256:5ed0323b5f5f8701264ef65e239a2bd83cb57098f2b971fa30bf79c06eeae271`. Each command and its output was written to a file by one script, `capture.sh`, and is shown here unedited. The only cut is where a `jq` command in the capture trims the results array, and that command is shown with it.
+Everything below was run on 21 October 2026 against SearXNG `2026.10.19-81371861f`, pulled as the image `searxng/searxng@sha256:5ed0323b…`. Each command and its output was written to a file by one script, `capture.sh`, and is shown here unedited. The only cut is where a `jq` command in the capture trims the results array, and that command is shown with it.
 
 <<sample: 00-environment.txt>>
 

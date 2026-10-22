@@ -42,13 +42,15 @@ const year = 2026;
     </div>
   </div>
 
-  <div class="container footer-base">
+  <div class="container">
+    <div class="footer-base">
     <p class="footer-legal">
       Gannet is MIT licensed. The photographs on this site are generated illustrations.<br />
       &copy; {year} DBHQ Consulting Ltd. Registered in England and Wales, company no. 06839674. <span class="nowrap">VAT GB 947 3073 10.</span>
     </p>
     {/* Reopens the analytics notice. Ships hidden; /consent.js reveals it. */}
     <button type="button" class="footer-settings" data-analytics-settings hidden>Cookie settings</button>
+    </div>
   </div>
 </footer>
 
@@ -56,7 +58,7 @@ const year = 2026;
   .footer { padding-block: 64px 32px; }
   .footer-inner { display: flex; flex-wrap: wrap; gap: 40px; justify-content: space-between; align-items: start; }
   .footer-brand { display: flex; flex-direction: column; gap: 14px; max-width: 36ch; }
-  .footer-brand img { height: 36px; width: auto; }
+  .footer-brand img { height: 36px; width: auto; align-self: flex-start; }
   .footer-brand p { font-size: .95rem; }
   .footer-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 40px; }
   @media (max-width: 560px) { .footer-links { grid-template-columns: 1fr; } }
@@ -64,6 +66,7 @@ const year = 2026;
   .footer-links a:hover { color: var(--surface); }
 
   .also { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--ink-line); display: grid; gap: 12px; }
+  .also-dbhq { justify-self: start; }
   .also-dbhq img { height: 30px; width: auto; }
   .also-label { font-size: .85rem; font-weight: 500; color: color-mix(in srgb, var(--ink-text) 74%, var(--ink)); }
   .also-list { list-style: none; padding: 0; display: grid; gap: 6px; font-size: .9rem; color: color-mix(in srgb, var(--ink-text) 80%, var(--ink)); }
