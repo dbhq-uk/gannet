@@ -76,7 +76,7 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
 
                     // Ask a vLLM or llama.cpp server for the context it is running with, unless configuration already says.
                     var served = model.ContextWindow is null
-                        ? await OpenAiCompatibleInfo.ReadContextAsync(http.CreateClient(HttpClientNames.ModelServer), new Uri(endpoint), model.Model, ct)
+                        ? await OpenAiCompatibleInfo.ReadContextAsync(http.CreateClient(HttpClientNames.ModelServer), new Uri(endpoint), model.Model, ct, model.ApiKey)
                         : null;
                     return Handle(name, model, client, served);
                 }
