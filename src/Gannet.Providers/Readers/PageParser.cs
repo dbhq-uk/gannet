@@ -34,6 +34,13 @@ internal static class PageParser
     /// </summary>
     public const long MaxTextDepth = 20_000_000;
 
+    /// <summary>
+    /// The most that all attribute names and values may add up to, over every element in the tree, clones included. SmartReader writes an attribute value out once per
+    /// clone when it serialises the article: one 1 MB title on a formatting element, then "&lt;/p&gt;&lt;p&gt;x" rounds, peaked at 3 GB over 1,000 rounds. Real pages:
+    /// Wikipedia Gannet 150,726, Bird 1,367,804.
+    /// </summary>
+    public const long MaxAttributeText = 5_000_000;
+
     // While parsing, the tree is probed every so many created elements: its real element count (clones do not reach the callback) and its depth, so a page that
     // nests deeply or clones heavily is stopped long before the parser has built a huge tree. The overshoot is at most ProbeEvery times the number of open
     // formatting elements, which the depth probe keeps small.
@@ -123,9 +130,9 @@ internal static class PageParser
                 throw new LimitException(AttributesMessage);
             }
 
-            if (TooNested(document))
+            if (Refusal(document) is { } refusal)
             {
-                throw new LimitException(TooDeep);
+                throw new LimitException(refusal);
             }
 
             return document;
@@ -187,17 +194,19 @@ internal static class PageParser
     }
 
     /// <summary>
-    /// Refuses a tree whose deepest element is past <see cref="HtmlDepth.MaxDepth"/>, whose element depths add up to more than <see cref="MaxDepthSum"/>, or whose
-    /// text lengths times their depths add up to more than <see cref="MaxTextDepth"/>. The root element is at depth 1 and a text node is one deeper than its parent.
-    /// An explicit stack, so a deep tree cannot overflow this walk.
+    /// The reason to refuse the tree, or null. Refuses a tree whose deepest element is past <see cref="HtmlDepth.MaxDepth"/>, whose element depths add up to more than
+    /// <see cref="MaxDepthSum"/>, whose text lengths times their depths add up to more than <see cref="MaxTextDepth"/>, or whose attribute names and values add up to
+    /// more than <see cref="MaxAttributeText"/>. The root element is at depth 1 and a text node is one deeper than its parent. An explicit stack, so a deep tree
+    /// cannot overflow this walk.
     /// </summary>
-    private static bool TooNested(IHtmlDocument document)
+    private static string? Refusal(IHtmlDocument document)
     {
         if (document.DocumentElement is not { } root)
         {
-            return false;
+            return null;
         }
 
+        long attributeText = 0;
         var deepest = 0;
         long sum = 0;
         long textSum = 0;
@@ -211,7 +220,7 @@ internal static class PageParser
                 textSum += (long)text.Length * depth;
                 if (textSum > MaxTextDepth)
                 {
-                    return true;
+                    return TooDeep;
                 }
 
                 continue;
@@ -230,7 +239,17 @@ internal static class PageParser
 
             if (deepest > HtmlDepth.MaxDepth || sum > MaxDepthSum)
             {
-                return true;
+                return TooDeep;
+            }
+
+            foreach (var attribute in element.Attributes)
+            {
+                attributeText += attribute.Name.Length + (long)(attribute.Value?.Length ?? 0);
+            }
+
+            if (attributeText > MaxAttributeText)
+            {
+                return AttributesMessage;
             }
 
             foreach (var child in element.ChildNodes)
@@ -248,6 +267,6 @@ internal static class PageParser
             }
         }
 
-        return false;
+        return null;
     }
 }
