@@ -16,8 +16,9 @@ internal sealed class ExaContentsReader(HttpClient http, string name, ServiceOpt
 
     protected override async Task<(string Title, string Markdown)> FetchAsync(Uri url, CancellationToken ct)
     {
+        var key = RequireKey();
         var request = PostJson("https://api.exa.ai/contents", new { urls = new[] { url.ToString() }, text = true });
-        request.Headers.Add("x-api-key", RequireKey());
+        request.Headers.Add("x-api-key", key);
         using var json = await SendJsonAsync(request, ct);
 
         // A URL Exa could not fetch has status "error" in statuses[] and no entry in results[], so it ends as "no text".
