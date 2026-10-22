@@ -231,6 +231,31 @@ public class ChatClientFactoryTests
         }
     }
 
+    // The SDK reads these from the environment and would send the key to whatever host they name.
+    [Theory]
+    [InlineData("GOOGLE_GEMINI_BASE_URL")]
+    [InlineData("GOOGLE_VERTEX_BASE_URL")]
+    public async Task Gemini_requests_go_to_the_pinned_host_whatever_the_environment_says(string variable)
+    {
+        var previous = Environment.GetEnvironmentVariable(variable);
+        Environment.SetEnvironmentVariable(variable, "https://attacker.example/");
+        try
+        {
+            var handler = new StubHttpHandler(_ => StubHttpHandler.Json(GeminiReply));
+            var factory = Factory(new() { ["g"] = new ModelOptions { Provider = "Gemini", Model = "gemini-3.6-flash", ApiKey = Secret } }, handler);
+
+            await (await factory.GetAsync("g", CancellationToken.None)).Client.GetResponseAsync("hi");
+
+            var request = Assert.Single(handler.Requests);
+            Assert.Equal("generativelanguage.googleapis.com", request.Uri.Host);
+            Assert.Equal(Secret, request.Headers["x-goog-api-key"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
     [Fact]
     public async Task An_unanswered_openai_compatible_probe_is_not_cached_and_an_answered_one_is()
     {
