@@ -66,4 +66,26 @@ public class OllamaModelInfoTests
         var error = await Assert.ThrowsAsync<ServiceFailedException>(() => OllamaModelInfo.ReadAsync(handler.Client(), new Uri("http://localhost:11434"), "x", CancellationToken.None));
         Assert.DoesNotContain("not found", error.Message, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task A_server_that_never_answers_is_a_typed_timeout_but_the_callers_cancellation_still_cancels()
+    {
+        var hang = new HangingHandler();
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() =>
+            OllamaModelInfo.ReadAsync(new HttpClient(hang), new Uri("http://localhost:11434"), "m", CancellationToken.None, TimeSpan.FromMilliseconds(50)));
+        Assert.Contains("timed out", error.Message, StringComparison.Ordinal);
+
+        using var cancelled = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            OllamaModelInfo.ReadAsync(new HttpClient(hang), new Uri("http://localhost:11434"), "m", cancelled.Token, TimeSpan.FromSeconds(30)));
+    }
+
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new HttpResponseMessage();
+        }
+    }
 }

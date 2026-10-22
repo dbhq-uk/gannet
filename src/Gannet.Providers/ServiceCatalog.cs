@@ -13,6 +13,7 @@ internal static class HttpClientNames
     public const string Reader = "gannet-reader";
     public const string Service = "gannet-service";
     public const string Ollama = "gannet-ollama";
+    public const string Anthropic = "gannet-anthropic";
     public const string ModelServer = "gannet-model-server";
 
     public static string Search(string type) => $"gannet-search-{type}";
