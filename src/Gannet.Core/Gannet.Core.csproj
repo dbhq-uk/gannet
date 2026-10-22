@@ -3,6 +3,7 @@
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <PackageReference Include="Markdig" />
+    <PackageReference Include="Polly.Core" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Credibility/credibility-rules.json" LogicalName="Gannet.Core.credibility-rules.json" Condition="Exists('Credibility/credibility-rules.json')" />
