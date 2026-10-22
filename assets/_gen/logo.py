@@ -47,8 +47,7 @@ HEAD = (
     " C414 242 344 236 292 240"        # underside of the upper mandible
     " C240 240 204 272 204 318"        # gape corner, into the chin
     " C204 372 258 420 286 512"        # throat to the bottom edge
-    " L126 512"
-    " C108 452 40 412 0 396"           # back of the neck
+    " L0 512"                          # back of the neck, straight down
     " Z"
 )
 
@@ -75,12 +74,16 @@ def mark_body(tile=NAVY, uid="t"):
     cx, cy, r = EYE
     s = (512 - 2 * PAD) / 512
     inner_r = TILE_R - PAD
-    # Rounded at the top, square at the bottom: the neck ends in a straight
-    # line across the frame, not in a curve (Dan, 22 Oct 2026: "dont like the
-    # curved bottom").
+    # The frame's corners are concentric with the tile's, so where the neck
+    # meets the bottom-left corner it rounds with the navy curve outside it.
+    # The back of the neck runs straight down to that corner rather than
+    # sweeping into a curved notch (Dan, 22 Oct 2026: "that can be straighten
+    # but round the corner so matches the blue curve").
     a, b = PAD, 512 - PAD
     frame = (f"M{a} {a + inner_r} A{inner_r} {inner_r} 0 0 1 {a + inner_r} {a} H{b - inner_r} "
-             f"A{inner_r} {inner_r} 0 0 1 {b} {a + inner_r} V{b} H{a} Z")
+             f"A{inner_r} {inner_r} 0 0 1 {b} {a + inner_r} V{b - inner_r} "
+             f"A{inner_r} {inner_r} 0 0 1 {b - inner_r} {b} H{a + inner_r} "
+             f"A{inner_r} {inner_r} 0 0 1 {a} {b - inner_r} Z")
     return (
         f'<defs><clipPath id="{uid}"><path d="{frame}"/></clipPath></defs>'
         f'<rect width="512" height="512" rx="{TILE_R}" fill="{tile}"/>'
