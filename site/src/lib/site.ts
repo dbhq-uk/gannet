@@ -36,7 +36,7 @@ export const REPO = "https://github.com/dbhq-uk/gannet";
 export const site = {
   url: "https://gannet.dbhq.uk",
   name: "Gannet",
-  tagline: "Deep research in which every claim is cited",
+  tagline: "Dives deep, cites everything",
   lead:
     "Gannet is an open-source deep research agent being built in C# by DBHQ. It is designed to take a question, plan the research, search the web, weigh each source and write a report in which every claim is cited to a page it actually read.",
   // The sibling cross-link block in the footer. One-way on purpose (Dan, 21 Oct
