@@ -2,14 +2,14 @@
   <a href="https://gannet.dbhq.uk/">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/lockup-white.svg">
-      <img src="assets/lockup.svg" alt="gannet" width="320">
+      <img src="assets/lockup.svg" alt="Gannet" width="320">
     </picture>
   </a>
 </p>
 
-# gannet
+# Gannet
 
-**[gannet.dbhq.uk](https://gannet.dbhq.uk/)** - what gannet is being built to
+**[gannet.dbhq.uk](https://gannet.dbhq.uk/)** - what Gannet is being built to
 do, where the build stands, and guides on deep research, search APIs and
 judging sources.
 
@@ -28,6 +28,14 @@ models and a search engine you host yourself.
 Started on 21 October 2026. The design is settled and the build is under
 way: the solution, CI and repository files are in place. Nothing runs yet.
 This section will say when there is something to run.
+
+## Inspired by
+
+Gannet was inspired by
+[deep-research-agent](https://github.com/tarun7r/deep-research-agent) by Tarun
+Sai Goddu, a Python project on LangGraph. Its default list of trusted domains
+for credibility scoring is adapted from that project, which is why its MIT
+notice is in [`LICENSE`](LICENSE).
 
 ## Licence
 

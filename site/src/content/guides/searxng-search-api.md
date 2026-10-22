@@ -265,9 +265,9 @@ Many people try a public SearXNG instance first, to skip Docker. This usually fa
 
 A test on 21 October 2026 sent one `format=json` request to each of 71 clearnet instances from the searx.space list, from one IP address. None returned JSON. Most answered 429. The rest returned 403, other errors, redirects, bot checks or login pages. That shows how scripts are treated, and it is one IP at one moment. It does not show how many instances have JSON on. Each instance has its own policy. Run your own.
 
-## Where gannet fits
+## Where Gannet fits
 
-[gannet](https://github.com/dbhq-uk/gannet) is a deep research tool in development and not released. SearXNG with a local Ollama model is designed to be its fully free path, with no API keys.
+[Gannet](https://github.com/dbhq-uk/gannet) is a deep research tool in development and not released. SearXNG with a local Ollama model is designed to be its fully free path, with no API keys.
 
 ## FAQ
 

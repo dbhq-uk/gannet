@@ -4,7 +4,11 @@ Guidance for AI agents (and people) working in this repository.
 
 ## What this is
 
-**gannet** - give it a question and it plans the research, searches the web, weighs each source, and writes a report in which every claim is cited. Built on Microsoft Agent Framework Workflows, with a Blazor UI, a REST API, an MCP server and a command line. The source of the four-stage shape is [deep-research-agent](https://github.com/tarun7r/deep-research-agent) (MIT); never describe gannet as "X for .NET".
+**Gannet** - give it a question and it plans the research, searches the web, weighs each source, and writes a report in which every claim is cited. Built on Microsoft Agent Framework Workflows, with a Blazor UI, a REST API, an MCP server and a command line.
+
+**Naming.** "Gannet" in prose; `gannet` for the command, paths, the repository, hostnames and the wordmark (Dan, 22 Oct 2026, the same split as Terraken).
+
+**Inspired by, never a rewrite.** Gannet was inspired by [deep-research-agent](https://github.com/tarun7r/deep-research-agent) (MIT). Never describe it as a rewrite or a port of that project, or as "X for .NET" - not in code, comments, docs, commits or the site (Dan, 22 Oct 2026). The README says "inspired by", and `LICENSE` keeps that project's notice because the default trusted-domain list in `credibility-rules.json` is adapted from it; the notice must stay while that list does.
 
 ## Layout
 
@@ -42,4 +46,4 @@ python3 assets/_gen/logo.py         # redraws every logo file
 
 ## The site
 
-`site/` is gannet.dbhq.uk. gannet is in development, so the site describes what it is being built to do and never what it does today; `site/tests/content.test.mjs` fails on wording that would only fit a released tool. When a pull request ships something the site names, take that phrase off the test's `UNSHIPPED` list in the same pull request.
+`site/` is gannet.dbhq.uk. Gannet is in development, so the site describes what it is being built to do and never what it does today; `site/tests/content.test.mjs` fails on wording that would only fit a released tool. When a pull request ships something the site names, take that phrase off the test's `UNSHIPPED` list in the same pull request.

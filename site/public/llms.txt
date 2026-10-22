@@ -1,20 +1,20 @@
-# gannet
+# Gannet
 
-> gannet is an open-source deep research agent being built in C# on Microsoft Agent Framework by DBHQ. Give it a question and it plans the research, searches the web, weighs each source and writes a report in which every claim is cited to a page the run actually fetched. It is in development and not released yet.
+> Gannet is an open-source deep research agent being built in C# on Microsoft Agent Framework by DBHQ. Give it a question and it plans the research, searches the web, weighs each source and writes a report in which every claim is cited to a page the run actually fetched. It is in development and not released yet.
 
 Status: in development. The core is merged (citation checking and numbering in APA, MLA, Chicago and IEEE; credibility scoring; report export; run storage). The model and search providers, the research workflow, the command line, REST API, MCP server and web UI are still being built.
 
-Source: https://github.com/dbhq-uk/gannet (MIT licence). A rewrite of https://github.com/tarun7r/deep-research-agent by Tarun Sai Goddu (MIT).
+Source: https://github.com/dbhq-uk/gannet (MIT licence).
 
 ## Pages
 
-- [gannet](https://gannet.dbhq.uk/): what gannet is being built to do, the rules it keeps about citations and stored text, and where the build stands.
+- [Gannet](https://gannet.dbhq.uk/): what Gannet is being built to do, the rules it keeps about citations and stored text, and where the build stands.
 - [Open-source deep research](https://gannet.dbhq.uk/open-source-deep-research/): the open-source deep research agents compared - licence, search backends, local models and how each cites its sources.
 - [Perplexity alternatives](https://gannet.dbhq.uk/perplexity-alternative/): hosted and self-hosted alternatives to Perplexity, and how to test whether one is a real replacement.
 - [Source credibility](https://gannet.dbhq.uk/source-credibility/): what source credibility is, the theory behind it, and the CRAAP, SIFT and lateral reading methods for judging a source.
 - [SearXNG search API](https://gannet.dbhq.uk/searxng-search-api/): run SearXNG in Docker, enable its JSON API, call it from code and use it as a free search API for an agent.
 
-## The rules gannet keeps
+## The rules Gannet keeps
 
 1. Every citation points at a page the run fetched. Sources get IDs when they are fetched; the writer cites only those IDs; anything else is removed.
 2. No search or reader result text is written to disk. Page text lives in memory for one run.

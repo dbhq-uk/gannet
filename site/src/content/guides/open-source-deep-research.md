@@ -123,7 +123,7 @@ If most sampled claims check out, the setup works. If they do not, change the mo
 
 ## One more project, still in development
 
-[gannet](https://github.com/dbhq-uk/gannet) is a deep research tool being built by DBHQ in C# on Microsoft Agent Framework Workflows and .NET 10. It is in development and has not been released, so there is nothing to install or run yet. It is a rewrite of tarun7r/deep-research-agent, which it credits, and it uses the same four-stage shape: plan, search, synthesise, write.
+[Gannet](https://github.com/dbhq-uk/gannet) is a deep research tool being built by DBHQ in C# on Microsoft Agent Framework Workflows and .NET 10. It is in development and has not been released, so there is nothing to install or run yet. It uses a four-stage shape: plan, search, synthesise, write.
 
 The design aims to let you pick a model, either cloud or local through Ollama, vLLM or llama.cpp, and a search service such as Tavily, SearXNG, Brave, Serper or Exa. Sources get IDs the moment they are fetched. The writer may cite only those IDs, and anything else is removed, so each citation points at a page the run actually fetched. No search result text is meant to be stored on disk. A web UI, command line, REST API and MCP server are planned.
 
@@ -182,4 +182,4 @@ All pages were read on 2026-10-21.
 | https://github.com/langchain-ai/local-deep-researcher | Local Deep Researcher README | 2026-10-21 |
 | https://api.github.com/repos/tarun7r/deep-research-agent | GitHub API: tarun7r/deep-research-agent | 2026-10-21 |
 | https://github.com/tarun7r/deep-research-agent | Deep Research Agent README and src/config.py | 2026-10-21 |
-| https://github.com/dbhq-uk/gannet | gannet repository (in development) | 2026-10-21 |
+| https://github.com/dbhq-uk/gannet | Gannet repository (in development) | 2026-10-21 |

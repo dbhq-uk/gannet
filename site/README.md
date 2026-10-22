@@ -1,7 +1,7 @@
 # gannet.dbhq.uk
 
 The site behind [gannet.dbhq.uk](https://gannet.dbhq.uk): five pages about
-[gannet](https://github.com/dbhq-uk/gannet), the open-source deep research agent
+[Gannet](https://github.com/dbhq-uk/gannet), the open-source deep research agent
 being built in this repository. It follows the shape of
 [terraken.dbhq.uk](https://terraken.dbhq.uk)'s site, and its tests came from
 there.
@@ -22,8 +22,8 @@ and recorded in the dbhq repo at `docs/research/gannet-seo-worldwide.md`:
 
 **The brand term is a bird.** `gannet` is 49,500 a month and every result in
 the top ten is the seabird; `gannet ai` is 50. So the home page targets the
-category and says what gannet is in its first line. The phrases that describe
-gannet best (`cited answers ai`, `verify ai citations`, `self hosted deep
+category and says what Gannet is in its first line. The phrases that describe
+Gannet best (`cited answers ai`, `verify ai citations`, `self hosted deep
 research`) measure near zero.
 
 **Three more guides wait for the code they describe**:
@@ -32,11 +32,11 @@ research`) measure near zero.
 feature, with a `/docs/` page once there is something to install.
 
 **The guides are guides, not landing pages.** Each is written to be the best
-answer to its query whether or not the reader ever runs gannet: at least 1,200
-words, gannet in one section near the end and under one per cent of the words,
+answer to its query whether or not the reader ever runs Gannet: at least 1,200
+words, Gannet in one section near the end and under one per cent of the words,
 and a "How to tell" section that says when the reader is done.
 
-## gannet is in development, and the site says so
+## Gannet is in development, and the site says so
 
 The home page carries the status from `status` in `src/lib/site.ts`, and every
 description of gannet is of what it is being built to do. What is already in
@@ -45,7 +45,7 @@ rules (`src/Gannet.Core/Citations/`) and the credibility scoring
 (`src/Gannet.Core/Credibility/`).
 
 `tests/content.test.mjs` holds this with an `UNSHIPPED` list: phrases that only
-fit a released gannet fail the build. **Take an entry off the list in the pull
+fit a released Gannet fail the build. **Take an entry off the list in the pull
 request that ships what it names, not before.**
 
 ## Every sample is captured, never typed
@@ -77,8 +77,8 @@ The FAQ structured data is read out of each guide's Markdown by
 
 The photographs in `src/assets/photo/` are generated illustrations (GPT Image,
 21 Oct 2026; the prompts are in the `.jsonl` files beside them) and the footer
-says so. They set the scene; nothing on the site may look like gannet's output
-until gannet produces some.
+says so. They set the scene; nothing on the site may look like Gannet's output
+until Gannet produces some.
 
 ## Deploying
 
@@ -90,6 +90,4 @@ are Terraform in the dbhq repo at `infra/gannet-site/`.
 
 ## Licence
 
-MIT, as gannet is. gannet is a rewrite of
-[deep-research-agent](https://github.com/tarun7r/deep-research-agent) by Tarun
-Sai Goddu, also MIT.
+MIT, as Gannet is.

@@ -13,14 +13,14 @@
 // THE BRAND TERM IS A BIRD. "gannet" is 49,500 a month and every result in the
 // top ten is about the seabird; "gannet ai" is 50. So the home page targets
 // "deep research agent", says what the tool is in its first line, and does not
-// lean on the name. The phrases that describe gannet best - "cited answers ai",
+// lean on the name. The phrases that describe Gannet best - "cited answers ai",
 // "verify ai citations", "self hosted deep research" - measure near zero.
 //
-// WHAT MAY BE SAID HERE. gannet is IN DEVELOPMENT: on 21 Oct 2026 phases 0-2 of
+// WHAT MAY BE SAID HERE. Gannet is IN DEVELOPMENT: on 21 Oct 2026 phases 0-2 of
 // ten are merged and it cannot yet answer a question. So:
 //
 //   - `status` is shown on every page that describes the tool;
-//   - what gannet is being built to do is written as that, never as what it
+//   - what Gannet is being built to do is written as that, never as what it
 //     does today. tests/content.test.mjs fails on phrases that only make sense
 //     for a released tool (UNSHIPPED in that file); each comes off the list in
 //     the PR that ships the thing it names;
@@ -32,16 +32,15 @@
 // research tool is selling.
 
 export const REPO = "https://github.com/dbhq-uk/gannet";
-export const UPSTREAM = "https://github.com/tarun7r/deep-research-agent";
 
 export const site = {
   url: "https://gannet.dbhq.uk",
-  name: "gannet",
+  name: "Gannet",
   tagline: "Deep research in which every claim is cited",
   lead:
-    "gannet is an open-source deep research agent being built in C# by DBHQ. It is designed to take a question, plan the research, search the web, weigh each source and write a report in which every claim is cited to a page it actually read.",
+    "Gannet is an open-source deep research agent being built in C# by DBHQ. It is designed to take a question, plan the research, search the web, weigh each source and write a report in which every claim is cited to a page it actually read.",
   // The sibling cross-link block in the footer. One-way on purpose (Dan, 21 Oct
-  // 2026): gannet lists the other sites, and their footers do not list gannet.
+  // 2026): Gannet lists the other sites, and their footers do not list gannet.
   also: [
     { label: "DBHQ", href: "https://dbhq.uk/", desc: "the practice that publishes this." },
     { label: "skills", href: "https://skills.dbhq.uk/", desc: "free agent skills for Claude Code and Codex." },
@@ -54,7 +53,7 @@ export const site = {
 // page; change them only when the state they describe changes.
 export const status = {
   label: "In development",
-  text: "gannet is being built in the open and is not released yet.",
+  text: "Gannet is being built in the open and is not released yet.",
   link: { label: "Follow the build on GitHub", href: REPO },
 } as const;
 
@@ -194,23 +193,19 @@ export interface Faq {
 
 export const homeFaqs: readonly Faq[] = [
   {
-    q: "Is gannet released?",
-    a: "Not yet. gannet is being built in the open on GitHub, and this page says what it is being built to do. The core pieces are merged: citation checking, credibility scoring, report export and storage. The search providers, the research workflow and the interfaces come next.",
+    q: "Is Gannet released?",
+    a: "Not yet. Gannet is being built in the open on GitHub, and this page says what it is being built to do. The core pieces are merged: citation checking, credibility scoring, report export and storage. The search providers, the research workflow and the interfaces come next.",
   },
   {
-    q: "Is gannet free?",
-    a: "Yes. gannet is open source under the MIT licence. It is being built to run on your own machine with your own keys, or with no keys at all on a local model through Ollama and a SearXNG instance you host.",
+    q: "Is Gannet free?",
+    a: "Yes. Gannet is open source under the MIT licence. It is being built to run on your own machine with your own keys, or with no keys at all on a local model through Ollama and a SearXNG instance you host.",
   },
   {
     q: "How is it different from ChatGPT or Gemini deep research?",
-    a: "Those are hosted services that use their own model and their own search. gannet is built to run where you choose, with the model and search service you choose, and to cite only pages the run actually fetched. Anything else is removed before the report is numbered.",
+    a: "Those are hosted services that use their own model and their own search. Gannet is built to run where you choose, with the model and search service you choose, and to cite only pages the run actually fetched. Anything else is removed before the report is numbered.",
   },
   {
-    q: "What is gannet built with?",
+    q: "What is Gannet built with?",
     a: "C# on .NET 10 and Microsoft Agent Framework Workflows, with a Blazor web UI. Models are reached through Microsoft.Extensions.AI, so the provider is configuration rather than code.",
-  },
-  {
-    q: "Where does gannet come from?",
-    a: "It is a rewrite of deep-research-agent by Tarun Sai Goddu, a Python project on LangGraph published under the MIT licence. The four-stage shape and the idea of scoring sources for credibility come from there.",
   },
 ];

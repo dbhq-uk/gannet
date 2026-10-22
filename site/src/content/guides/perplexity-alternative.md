@@ -119,7 +119,7 @@ A separate page covers open-source agents that write long reports, such as open_
 | Farfalle | Apache-2.0 | 3,544 | 27 Sep 2024 | SearXNG, Tavily, Serper, Bing | Yes, Ollama | No commits for two years |
 | SearXNG | AGPL-3.0 | 38,708 | 19 Oct 2026 | It is the search layer | Not applicable | Maintained, but not an answer engine |
 | Khoj | AGPL-3.0 | 37,780 | 2 Aug 2026 | Web and your own documents | Yes | Maintained, broader scope |
-| gannet | MIT | Not released | Not released | Planned: a choice of search services, including SearXNG | Planned: Ollama, vLLM, llama.cpp | In development, not released |
+| Gannet | MIT | Not released | Not released | Planned: a choice of search services, including SearXNG | Planned: Ollama, vLLM, llama.cpp | In development, not released |
 
 ## How to choose
 
@@ -147,9 +147,9 @@ For each answer, open every cited source and check that the page says what the a
 
 The candidate is a good replacement if it matches Perplexity on at least four of the five questions and rarely cites a page that does not back the claim. If it fails the false-premise question, it is agreeing with you instead of checking.
 
-## A different shape: gannet
+## A different shape: Gannet
 
-gannet is a self-hosted deep research tool being built in C# on Microsoft Agent Framework. It is MIT licensed and made by DBHQ, and the code is at github.com/dbhq-uk/gannet. It is in development and not released, so nothing can be installed or used today.
+Gannet is a self-hosted deep research tool being built in C# on Microsoft Agent Framework. It is MIT licensed and made by DBHQ, and the code is at github.com/dbhq-uk/gannet. It is in development and not released, so nothing can be installed or used today.
 
 It is also a different shape from Perplexity. It is being built to plan a piece of research, search, weigh each source and write a report in which every citation points at a page the run fetched. It is not designed to give a quick answer in a few seconds. It is planned to offer a choice of model, cloud or local through Ollama, vLLM and llama.cpp, and a choice of search service including self-hosted SearXNG. The design stores no search result text on disk. A web UI, command line, REST API and MCP server are planned.
 
@@ -208,4 +208,4 @@ All pages were read on 21 October 2026. Raw copies and notes are in the research
 - LLocalSearch repository (archived): https://github.com/nilsherzig/LLocalSearch
 - MindSearch repository: https://github.com/InternLM/MindSearch
 - Ollama repository: https://github.com/ollama/ollama
-- gannet repository: https://github.com/dbhq-uk/gannet
+- Gannet repository: https://github.com/dbhq-uk/gannet

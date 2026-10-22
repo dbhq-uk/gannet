@@ -5,11 +5,11 @@ editorial" (Dan, 21 Oct 2026:
 [the reference](https://styles.refero.design/style/418b374a-be64-44f0-b17e-1d45308c7e62)):
 warm parchment, charcoal type, one deep brand colour used sparingly, one
 full-bleed dark band, generous space, no shadows, and photography carrying the
-feeling. Put into gannet's colours.
+feeling. Put into Gannet's colours.
 
 ## The mapping
 
-| Reference | gannet | Token |
+| Reference | Gannet | Token |
 |---|---|---|
 | Warm Parchment canvas | the same, the page's ground | `--bg #F2F0EB` |
 | Ink Charcoal text, never pure black | the same | `--text #292827` |
@@ -18,7 +18,7 @@ feeling. Put into gannet's colours.
 | Royal Violet links | DBHQ blue links, nowhere else | `--blue #2B6BF3` |
 | Super Sans VF at 460 for headlines | Geist at 460, self-hosted | `font-weight: 460` |
 | 16px radius, hairline borders, no shadows | the same | `--r-md`, `--border` |
-| Photography with product UI as glass over it | gannet photographs with the rules as glass over them | `.glass` |
+| Photography with product UI as glass over it | Gannet photographs with the rules as glass over them | `.glass` |
 
 ## The rules
 
@@ -28,8 +28,8 @@ feeling. Put into gannet's colours.
 - **The sea band appears once on a page at most.** It is the one tonal break.
 - **No drop shadows.** Depth is the photograph and the glass.
 - **Images are mood, never proof.** The photographs are generated and the
-  footer says so. The glass cards carry gannet's rules as text, never a mock of
-  output, because gannet has none yet. When it does, the site shows a real
+  footer says so. The glass cards carry Gannet's rules as text, never a mock of
+  output, because Gannet has none yet. When it does, the site shows a real
   capture.
 - **Guides read like articles**: 18px body at a 68-character measure, one
   column, the table of contents at the top rather than in a sidebar.

@@ -1,6 +1,6 @@
 {
-  "name": "gannet",
-  "short_name": "gannet",
+  "name": "Gannet",
+  "short_name": "Gannet",
   "description": "Deep research in which every claim is cited",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

@@ -13,7 +13,7 @@
 //   /                               WebPage + SoftwareSourceCode
 //   /<guide>/                       TechArticle + FAQPage
 //
-// SoftwareSourceCode, not SoftwareApplication: gannet is not released, so
+// SoftwareSourceCode, not SoftwareApplication: Gannet is not released, so
 // there is no application to download or run, only source being built. The
 // home page describes a repository, and the structured data says the same.
 
@@ -26,9 +26,9 @@ export const ORG_ID = `${DBHQ}/#organization`;
 export const WEBSITE_ID = `${BASE}/#website`;
 export const CODE_ID = `${BASE}/#source`;
 
-const SITE_NAME = "gannet";
+const SITE_NAME = "Gannet";
 const SITE_DESCRIPTION =
-  "gannet is an open-source deep research agent being built in C#: it plans the research, searches the web, weighs each source and cites every claim to a page it read.";
+  "Gannet is an open-source deep research agent being built in C#: it plans the research, searches the web, weighs each source and cites every claim to a page it read.";
 
 function organizationNode() {
   return {
@@ -60,7 +60,7 @@ export function sourceCodeNode() {
   return {
     "@type": "SoftwareSourceCode",
     "@id": CODE_ID,
-    name: "gannet",
+    name: "Gannet",
     description: SITE_DESCRIPTION,
     codeRepository: REPO,
     programmingLanguage: "C#",
@@ -68,7 +68,6 @@ export function sourceCodeNode() {
     license: "https://opensource.org/licenses/MIT",
     creativeWorkStatus: "In development",
     author: { "@id": ORG_ID },
-    isBasedOn: "https://github.com/tarun7r/deep-research-agent",
   };
 }
 
@@ -127,7 +126,7 @@ function webPageNode(p: PageInput) {
 // The site is flat: every page is Home, or Home > <page>.
 function breadcrumbNode(p: PageInput) {
   const items: Record<string, unknown>[] = [
-    { "@type": "ListItem", position: 1, name: "gannet", item: `${BASE}/` },
+    { "@type": "ListItem", position: 1, name: "Gannet", item: `${BASE}/` },
   ];
   if (p.crumb) items.push({ "@type": "ListItem", position: 2, name: p.crumb, item: p.canonical });
   return { "@type": "BreadcrumbList", "@id": `${p.canonical}#breadcrumb`, itemListElement: items };
