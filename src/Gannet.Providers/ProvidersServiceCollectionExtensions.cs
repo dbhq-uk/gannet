@@ -95,6 +95,9 @@ public static class ProvidersServiceCollectionExtensions
             });
 
         services.AddHttpClient(HttpClientNames.Ollama);
+
+        // Probes a local vLLM or llama.cpp server for its context length; a server that does not answer quickly is treated as not answering.
+        services.AddHttpClient(HttpClientNames.ModelServer, c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddSingleton<IChatClientFactory, ChatClientFactory>();
         services.AddSingleton<IServiceCatalog, ServiceCatalog>();
 
