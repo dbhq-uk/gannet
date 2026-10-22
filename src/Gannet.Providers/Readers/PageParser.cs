@@ -54,8 +54,16 @@ internal static class PageParser
     private sealed class LimitException(string message) : Exception(message);
 
     /// <summary>Throws <see cref="ServiceFailedException"/> when the page passes either limit.</summary>
-    public static IHtmlDocument Parse(string html, string service)
+    public static IHtmlDocument Parse(string html, string service) => Parse(html, service, out _);
+
+    /// <summary>
+    /// As <see cref="Parse(string, string)"/>, and reports how much work was done when the parse stopped, so a test can assert on the work and not on the time.
+    /// The object is assigned before the parse starts, so it can be read after the exception.
+    /// </summary>
+    internal static IHtmlDocument Parse(string html, string service, out ParseStats stats)
     {
+        var seen = new ParseStats();
+        stats = seen;
         var count = 0;
         IElement? previous = null;
 
@@ -68,8 +76,10 @@ internal static class PageParser
             SkipComments = true,
             OnCreated = (element, _) =>
             {
-                if (++count > HtmlDepth.MaxElements)
+                seen.CreatedAtStop = ++count;
+                if (count > HtmlDepth.MaxElements)
                 {
+                    seen.TreeSizeAtStop = element.Owner?.All.Length ?? count;
                     throw new LimitException(TooManyElements);
                 }
 
@@ -84,6 +94,7 @@ internal static class PageParser
                 {
                     if (element.Owner is { } owner && owner.All.Length > HtmlDepth.MaxElements)
                     {
+                        seen.TreeSizeAtStop = owner.All.Length;
                         throw new LimitException(TooManyElements);
                     }
 
@@ -119,6 +130,7 @@ internal static class PageParser
             };
 
             var document = parser.ParseDocument(html);
+            seen.TreeSizeAtStop = document.All.Length;
             if (document.All.Length > HtmlDepth.MaxElements)
             {
                 throw new LimitException(TooManyElements);
@@ -269,4 +281,14 @@ internal static class PageParser
 
         return null;
     }
+}
+
+/// <summary>What <see cref="PageParser"/> had done when it stopped: for tests, which assert on the work and not on the time.</summary>
+internal sealed class ParseStats
+{
+    /// <summary>How many times the parser's element-created callback had fired.</summary>
+    public int CreatedAtStop { get; set; }
+
+    /// <summary>How many elements the tree held at the last count: the real size, clones included.</summary>
+    public int TreeSizeAtStop { get; set; }
 }

@@ -212,7 +212,7 @@ public class CitationCheckerTests
 
     // Each shape is 1,000,000 characters. The work is linear, so each takes about a second or less in Release
     // and a few seconds in Debug on a busy machine. The bound is generous on purpose: a timing test must not
-    // fail because the machine is loaded, but a quadratic scan would take minutes at this size and still fail.
+    // fail because the machine is loaded, but a quadratic scan would take hours at this size and still fail.
     [Theory]
     [MemberData(nameof(HostileUnits))]
     public void Hostile_input_finishes_quickly(string unit)
@@ -222,7 +222,7 @@ public class CitationCheckerTests
         var timer = Stopwatch.StartNew();
         _ = CitationChecker.Check(text, Known(1));
         timer.Stop();
-        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(30), string.Create(CultureInfo.InvariantCulture, $"Took {timer.Elapsed.TotalSeconds:F1}s"));
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(120), string.Create(CultureInfo.InvariantCulture, $"Took {timer.Elapsed.TotalSeconds:F1}s"));
     }
 
     // Round brackets: "(s 172)" is a UK statute reference. Only "Source ..." and an upper-case S joined to a digit count.

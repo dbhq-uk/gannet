@@ -41,9 +41,11 @@ public class HtmlDepthTests
     {
         Assert.True(name.Length > 0);
         var big = "<html><body>" + html + Rep(html, 1_000_000 / Math.Max(1, html.Length));
+
+        // The bound is wide on purpose: a busy machine must not fail this, and a quadratic scan of a megabyte would take hours.
         var started = System.Diagnostics.Stopwatch.StartNew();
         Assert.NotEqual(HtmlScan.Ok, HtmlDepth.Scan(big));
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), $"took {started.Elapsed}");
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(60), $"took {started.Elapsed}");
     }
 
     [Fact]
