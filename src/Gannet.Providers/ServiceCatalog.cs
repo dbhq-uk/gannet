@@ -15,6 +15,7 @@ internal static class HttpClientNames
     public const string Ollama = "gannet-ollama";
     public const string Anthropic = "gannet-anthropic";
     public const string ModelServer = "gannet-model-server";
+    public const string ModelChat = "gannet-model-chat";
 
     public static string Search(string type) => $"gannet-search-{type}";
 }

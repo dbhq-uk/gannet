@@ -39,6 +39,10 @@ public class ModelCapabilityTableTests
     [InlineData("gemini-2.5-pro", 1_048_576)]
     [InlineData("gemini-3.6-flash", 1_048_576)]
     [InlineData("gemini-4-argon", 1_048_576)]
+    [InlineData("deepseek-v4-pro", 1_000_000)]
+    [InlineData("deepseek-flash", 1_000_000)]
+    [InlineData("deepseek-v4-flash", 1_000_000)]
+    [InlineData("deepseek-v4-flash-vision-exp", 1_000_000)]
     [InlineData("GEMINI-3.1-PRO-PREVIEW", 1_048_576)]
     public void Known_families_have_their_documented_window(string model, int window) =>
         Assert.Equal(new ModelCapabilities(window, true), ModelCapabilityTable.Lookup(model));
@@ -46,6 +50,9 @@ public class ModelCapabilityTableTests
     [Theory]
     [InlineData("qwen3:4b")]
     [InlineData("something-local")]
+    [InlineData("deepseek-chat")]
+    [InlineData("deepseek-flash-2")]
+    [InlineData("deepseek/deepseek-v4-pro")]
     [InlineData("")]
     public void Unknown_models_are_not_in_the_table(string model) => Assert.Null(ModelCapabilityTable.Lookup(model));
 
