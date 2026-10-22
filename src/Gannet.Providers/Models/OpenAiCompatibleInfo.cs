@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 using Gannet.Core.Services;
 using Gannet.Providers.Http;
@@ -13,8 +14,11 @@ internal static class OpenAiCompatibleInfo
     private const string Service = "The model server";
     private const int MaxBodyBytes = 1024 * 1024;
 
-    /// <summary>The context length the server reports for <paramref name="model"/>, or null when it answers neither shape. Only the caller's own cancellation escapes.</summary>
-    public static async Task<int?> ReadContextAsync(HttpClient http, Uri endpoint, string model, CancellationToken ct)
+    /// <summary>
+    /// The context length the server reports for <paramref name="model"/>, or null when it answers neither shape. Only the caller's own cancellation escapes.
+    /// A configured <paramref name="apiKey"/> goes as a bearer header to the endpoint it belongs to, never into a URL or a message.
+    /// </summary>
+    public static async Task<int?> ReadContextAsync(HttpClient http, Uri endpoint, string model, CancellationToken ct, string? apiKey = null)
     {
         // vLLM serves /v1/models; an endpoint configured without /v1 is tried both ways.
         var modelUrls = ModelUrl.EndsWithVersion(endpoint)
@@ -23,13 +27,13 @@ internal static class OpenAiCompatibleInfo
 
         foreach (var url in modelUrls)
         {
-            if (await TryAsync(http, url, root => FromModels(root, model), ct) is { } vllm)
+            if (await TryAsync(http, url, root => FromModels(root, model), apiKey, ct) is { } vllm)
             {
                 return vllm;
             }
         }
 
-        return await TryAsync(http, ModelUrl.Root(endpoint, "props"), FromProps, ct);
+        return await TryAsync(http, ModelUrl.Root(endpoint, "props"), FromProps, apiKey, ct);
     }
 
     private static int? FromModels(JsonElement root, string model)
@@ -50,12 +54,17 @@ internal static class OpenAiCompatibleInfo
     private static int? Usable(JsonElement number) =>
         number.ValueKind == JsonValueKind.Number && number.TryGetInt32(out var value) && value > 0 ? value : null;
 
-    private static async Task<int?> TryAsync(HttpClient http, Uri url, Func<JsonElement, int?> read, CancellationToken ct)
+    private static async Task<int?> TryAsync(HttpClient http, Uri url, Func<JsonElement, int?> read, string? apiKey, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            }
+
             using var response = await ServiceHttp.SendAsync(http, request, Service, ct);
             if (!response.IsSuccessStatusCode)
             {

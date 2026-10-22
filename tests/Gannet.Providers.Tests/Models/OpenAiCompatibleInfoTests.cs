@@ -107,4 +107,44 @@ public class OpenAiCompatibleInfoTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             OpenAiCompatibleInfo.ReadContextAsync(Server(_ => StubHttpHandler.Json(Vllm)).Client(), new Uri("http://localhost:8000/v1"), "qwen3-32b", cancelled.Token));
     }
+
+    private const string ProbeKey = "sk-probe-secret-value";
+
+    [Fact]
+    public async Task A_configured_key_is_sent_as_a_bearer_header_on_both_probes_and_never_in_a_url()
+    {
+        var handler = Server(_ => null);
+
+        await OpenAiCompatibleInfo.ReadContextAsync(handler.Client(), new Uri("http://localhost:8000/v1"), "m", CancellationToken.None, ProbeKey);
+
+        Assert.Contains(handler.Requests, r => r.Uri.AbsolutePath.EndsWith("/models", StringComparison.Ordinal));
+        Assert.Contains(handler.Requests, r => r.Uri.AbsolutePath == "/props");
+        Assert.All(handler.Requests, r =>
+        {
+            Assert.Equal($"Bearer {ProbeKey}", r.Headers["Authorization"]);
+            Assert.DoesNotContain(ProbeKey, r.Uri.ToString(), StringComparison.Ordinal);
+        });
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task No_key_means_no_authorization_header(string? key)
+    {
+        var handler = Server(_ => null);
+
+        await OpenAiCompatibleInfo.ReadContextAsync(handler.Client(), new Uri("http://localhost:8000/v1"), "m", CancellationToken.None, key);
+
+        Assert.NotEmpty(handler.Requests);
+        Assert.All(handler.Requests, r => Assert.False(r.Headers.ContainsKey("Authorization")));
+    }
+
+    [Fact]
+    public async Task A_401_on_both_probes_still_gives_null()
+    {
+        var handler = Server(_ => StubHttpHandler.Json($$"""{ "error": "bad key {{ProbeKey}}" }""", HttpStatusCode.Unauthorized));
+
+        Assert.Null(await OpenAiCompatibleInfo.ReadContextAsync(handler.Client(), new Uri("http://localhost:8000/v1"), "m", CancellationToken.None, ProbeKey));
+    }
 }

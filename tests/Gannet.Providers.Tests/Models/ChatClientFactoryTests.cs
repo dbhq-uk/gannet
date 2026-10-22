@@ -149,6 +149,26 @@ public class ChatClientFactoryTests
     }
 
     [Fact]
+    public async Task A_keyed_compatible_server_is_probed_with_the_key_and_a_401_falls_back_without_leaking_it()
+    {
+        var handler = new StubHttpHandler(r => r.Headers.Authorization?.Parameter == Secret && r.RequestUri!.AbsolutePath == "/v1/models"
+            ? StubHttpHandler.Json("""{ "data": [ { "id": "m", "max_model_len": 50000 } ] }""")
+            : StubHttpHandler.Json($$"""{ "error": "{{Secret}}" }""", HttpStatusCode.Unauthorized));
+        var factory = Factory(new()
+        {
+            ["keyed"] = new ModelOptions { Provider = "OpenAICompatible", Endpoint = "http://spark:8000/v1", Model = "m", ApiKey = Secret },
+            ["wrong"] = new ModelOptions { Provider = "OpenAICompatible", Endpoint = "http://spark:8000/v1", Model = "other", ApiKey = "wrong-key" },
+        }, handler);
+
+        Assert.Equal(50000, (await factory.GetAsync("keyed", CancellationToken.None)).Capabilities.ContextWindow);
+
+        var fallback = await factory.GetAsync("wrong", CancellationToken.None);
+        Assert.Equal(new ModelCapabilities(8192, false), fallback.Capabilities);
+        Assert.DoesNotContain(Secret, fallback.ToString(), StringComparison.Ordinal);
+        Assert.All(handler.Requests, r => Assert.DoesNotContain(Secret, r.Uri.ToString(), StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_server_that_answers_neither_shape_falls_back_to_8192_and_no_tools()
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Json("{}", HttpStatusCode.NotFound));
