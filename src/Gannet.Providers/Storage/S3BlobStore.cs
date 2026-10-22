@@ -91,12 +91,8 @@ internal sealed class S3BlobStore(IAmazonS3 s3, string bucket, TimeSpan bodyDead
     public async Task<byte[]?> GetAsync(string key, CancellationToken ct)
     {
         BlobKeys.Validate(key);
-        GetObjectResponse response;
-        try
-        {
-            response = await Call(() => s3.GetObjectAsync(bucket, key, ct), ct);
-        }
-        catch (AmazonS3Exception e) when (e.StatusCode == HttpStatusCode.NotFound && e.ErrorCode != "NoSuchBucket")
+        var response = await CallAllowingMissing(() => s3.GetObjectAsync(bucket, key, ct), ct);
+        if (response is null)
         {
             return null;
         }
@@ -137,22 +133,27 @@ internal sealed class S3BlobStore(IAmazonS3 s3, string bucket, TimeSpan bodyDead
     public async Task DeleteAsync(string key, CancellationToken ct)
     {
         BlobKeys.Validate(key);
-        try
-        {
-            await Call(() => s3.DeleteObjectAsync(bucket, key, ct), ct);
-        }
-        catch (AmazonS3Exception e) when (e.StatusCode == HttpStatusCode.NotFound && e.ErrorCode != "NoSuchBucket")
-        {
-        }
+        await CallAllowingMissing(() => s3.DeleteObjectAsync(bucket, key, ct), ct);
     }
 
     public void Dispose() => s3.Dispose();
 
-    /// <summary>
-    /// Runs one SDK call. An S3 error is rethrown as an <see cref="AmazonS3Exception"/> only for a 404 other than a missing bucket, which the
-    /// callers read as "no such key"; everything else becomes a typed gannet error with fixed text.
-    /// </summary>
+    /// <summary>Runs one SDK call. Every failure, a 404 included, becomes a typed gannet error with fixed text.</summary>
     private async Task<T> Call<T>(Func<Task<T>> call, CancellationToken ct)
+    {
+        try
+        {
+            return await call();
+        }
+        catch (Exception e) when (IsTransport(e, ct))
+        {
+            throw Map(e);
+        }
+    }
+
+    /// <summary>Like <see cref="Call{T}"/>, but a missing key (404 other than a missing bucket) gives null. Only Get and Delete may treat a 404 so.</summary>
+    private async Task<T?> CallAllowingMissing<T>(Func<Task<T>> call, CancellationToken ct)
+        where T : class
     {
         try
         {
@@ -160,13 +161,21 @@ internal sealed class S3BlobStore(IAmazonS3 s3, string bucket, TimeSpan bodyDead
         }
         catch (AmazonS3Exception e) when (e.StatusCode == HttpStatusCode.NotFound && e.ErrorCode != "NoSuchBucket")
         {
-            throw;
+            return null;
         }
-        catch (Exception e) when (e is AmazonServiceException or AmazonClientException or HttpRequestException or IOException && !ct.IsCancellationRequested)
+        catch (Exception e) when (IsTransport(e, ct))
         {
             throw Map(e);
         }
     }
+
+    /// <summary>
+    /// A failure of the SDK or the network, including its own timeouts (which surface as cancellation). The caller's own cancellation is not one:
+    /// it passes through untouched.
+    /// </summary>
+    private static bool IsTransport(Exception e, CancellationToken ct) =>
+        !ct.IsCancellationRequested
+        && e is AmazonServiceException or AmazonClientException or HttpRequestException or IOException or OperationCanceledException;
 
     private async Task Call(Func<Task> call, CancellationToken ct) =>
         await Call(async () =>
@@ -177,6 +186,11 @@ internal sealed class S3BlobStore(IAmazonS3 s3, string bucket, TimeSpan bodyDead
 
     private ServiceException Map(Exception e)
     {
+        if (e is OperationCanceledException)
+        {
+            return new ServiceFailedException(Service, $"{Service} timed out.");
+        }
+
         if (e is not AmazonS3Exception s3Error)
         {
             return new ServiceFailedException(Service, $"{Service} could not be reached.");
@@ -185,7 +199,7 @@ internal sealed class S3BlobStore(IAmazonS3 s3, string bucket, TimeSpan bodyDead
         var status = (int)s3Error.StatusCode;
         return s3Error.StatusCode switch
         {
-            HttpStatusCode.NotFound => new ServiceFailedException(Service, $"{Service} says the bucket does not exist. Check Gannet:Storage:S3:Bucket."),
+            HttpStatusCode.NotFound when s3Error.ErrorCode == "NoSuchBucket" => new ServiceFailedException(Service, $"{Service} says the bucket does not exist. Check Gannet:Storage:S3:Bucket."),
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
                 new AuthRequiredException(Service, $"{Service} refused the request ({status}). Check Gannet:Storage:S3:AccessKeyId and Gannet:Storage:S3:SecretAccessKey."),
             HttpStatusCode.TooManyRequests => new RateLimitedException(Service, null, $"{Service} is limiting the request rate (429)."),
@@ -225,7 +239,7 @@ internal sealed class S3BlobStore(IAmazonS3 s3, string bucket, TimeSpan bodyDead
         {
             throw new ServiceFailedException(Service, $"{Service} timed out while sending an object.");
         }
-        catch (Exception e) when (e is AmazonServiceException or AmazonClientException or HttpRequestException or IOException && !ct.IsCancellationRequested)
+        catch (Exception e) when (IsTransport(e, ct))
         {
             throw Map(e);
         }

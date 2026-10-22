@@ -297,6 +297,43 @@ public class S3BlobStoreTests
     }
 
     [Fact]
+    public async Task A_404_that_is_not_a_missing_key_is_a_typed_failure_on_put_and_list()
+    {
+        var stub = new StubHttpHandler(_ => Error(HttpStatusCode.NotFound, "NotFound", SecretKey));
+        var store = Store(stub);
+
+        var put = await Assert.ThrowsAsync<ServiceFailedException>(() => store.PutAsync("runs/a.json", new byte[] { 1 }, CancellationToken.None));
+        var list = await Assert.ThrowsAsync<ServiceFailedException>(() => store.ListAsync("runs/", CancellationToken.None));
+
+        Assert.DoesNotContain(SecretKey, put.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(SecretKey, list.Message, StringComparison.Ordinal);
+        Assert.Contains("404", put.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_sdk_timeout_is_a_typed_failure_but_the_callers_cancellation_is_not()
+    {
+        var stub = new StubHttpHandler(_ => throw new TaskCanceledException($"timed out for {KeyId}"));
+        var store = Store(stub);
+
+        var get = await Assert.ThrowsAsync<ServiceFailedException>(() => store.GetAsync("runs/a.json", CancellationToken.None));
+        var put = await Assert.ThrowsAsync<ServiceFailedException>(() => store.PutAsync("runs/a.json", new byte[] { 1 }, CancellationToken.None));
+        var list = await Assert.ThrowsAsync<ServiceFailedException>(() => store.ListAsync("runs/", CancellationToken.None));
+        var delete = await Assert.ThrowsAsync<ServiceFailedException>(() => store.DeleteAsync("runs/a.json", CancellationToken.None));
+
+        Assert.All(new[] { get, put, list, delete }, e =>
+        {
+            Assert.Contains("timed out", e.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(KeyId, e.Message, StringComparison.Ordinal);
+        });
+
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.GetAsync("runs/a.json", cancelled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.PutAsync("runs/a.json", new byte[] { 1 }, cancelled.Token));
+    }
+
+    [Fact]
     public async Task The_callers_cancellation_is_not_turned_into_a_failure()
     {
         var stub = new StubHttpHandler(_ => StubHttpHandler.Json("{}"));
