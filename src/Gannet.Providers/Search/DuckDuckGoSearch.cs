@@ -82,7 +82,7 @@ internal sealed class DuckDuckGoSearch : SearchProviderBase
             request.Headers.Accept.ParseAdd("text/html");
 
             // Headers first, so the cap applies before the body is buffered.
-            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var response = await ServiceHttp.SendAsync(Http, request, DisplayName, ct);
             if (response.StatusCode == HttpStatusCode.Accepted)
             {
                 throw new ChallengeDetectedException(DisplayName, "DuckDuckGo answered with a bot challenge.");

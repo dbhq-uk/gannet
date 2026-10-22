@@ -1,5 +1,3 @@
-using Polly.Timeout;
-
 namespace Gannet.Core.Services;
 
 /// <summary>One reader that did not give text. <see cref="Message"/> is gannet's own wording, never text from a server or a page.</summary>
@@ -37,10 +35,6 @@ public sealed class ReaderChain(IReadOnlyList<IPageReader> readers)
             catch (HttpRequestException e)
             {
                 failures.Add(new ReadFailure(reader.Name, "failed", $"Could not connect ({e.HttpRequestError})."));
-            }
-            catch (TimeoutRejectedException)
-            {
-                failures.Add(new ReadFailure(reader.Name, "failed", "Timed out."));
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {

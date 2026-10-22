@@ -1,6 +1,5 @@
 using Gannet.Core.Services;
 using Gannet.TestSupport;
-using Polly.Timeout;
 
 namespace Gannet.Core.Tests.Services;
 
@@ -87,16 +86,16 @@ public class ReaderChainTests
         Assert.Equal(("first", kind, error.Message), (failure.Reader, failure.Error, failure.Message));
     }
 
-    [Fact]
-    public async Task A_resilience_timeout_is_recorded_as_a_failure()
-    {
-        var timeout = new ThrowingReader("jina", new TimeoutRejectedException("The operation didn't complete within the allowed timeout of '00:00:20'."));
+    private sealed class UnknownKindOfException() : Exception("SECRET-PAGE-TEXT from the server");
 
-        var outcome = await new ReaderChain([timeout, Works]).ReadAsync(Url, 8000, CancellationToken.None);
+    [Fact]
+    public async Task An_exception_type_the_chain_does_not_know_is_recorded_as_unexpected()
+    {
+        var outcome = await new ReaderChain([new ThrowingReader("jina", new UnknownKindOfException()), Works]).ReadAsync(Url, 8000, CancellationToken.None);
 
         Assert.Equal("works", outcome.Page!.Reader);
         var failure = Assert.Single(outcome.Failures);
-        Assert.Equal(("jina", "failed", "Timed out."), (failure.Reader, failure.Error, failure.Message));
+        Assert.Equal(("jina", "unexpected", nameof(UnknownKindOfException)), (failure.Reader, failure.Error, failure.Message));
     }
 
     [Fact]
