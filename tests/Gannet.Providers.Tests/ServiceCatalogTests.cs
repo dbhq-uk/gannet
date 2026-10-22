@@ -146,10 +146,25 @@ public class ServiceCatalogTests
     }
 
     [Fact]
-    public void S3_kind_replaces_the_blob_store()
+    public void S3_kind_resolves_an_S3_blob_store_without_touching_the_network()
+    {
+        using var provider = BuildProvider(new()
+        {
+            ["Gannet:Storage:Kind"] = "S3",
+            ["Gannet:Storage:S3:ServiceUrl"] = "https://account.r2.cloudflarestorage.com",
+            ["Gannet:Storage:S3:Bucket"] = "gannet",
+            ["Gannet:Storage:S3:AccessKeyId"] = "dummy-id",
+            ["Gannet:Storage:S3:SecretAccessKey"] = "dummy-secret",
+        });
+        Assert.IsType<Gannet.Providers.Storage.S3BlobStore>(provider.GetRequiredService<Gannet.Core.Storage.IBlobStore>());
+    }
+
+    [Fact]
+    public void S3_kind_with_no_settings_fails_naming_the_first_missing_one()
     {
         using var provider = BuildProvider(new() { ["Gannet:Storage:Kind"] = "S3" });
-        Assert.Throws<NotSupportedException>(() => provider.GetRequiredService<Gannet.Core.Storage.IBlobStore>());
+        var error = Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<Gannet.Core.Storage.IBlobStore>());
+        Assert.Contains("Gannet:Storage:S3:ServiceUrl", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
