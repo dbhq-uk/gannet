@@ -8,11 +8,12 @@ internal enum HtmlScan
 }
 
 /// <summary>
-/// A linear pre-scan that refuses the pages that make HTML parsing slow or crash it. Two things do that: deep nesting of unclosed elements (20,000 nested
+/// A fast pre-filter, not the guard. It is a linear scan of the text that refuses the obvious hostile shapes in milliseconds, before the real parse starts.
+/// It is a guess about what the parser will do and it has gaps; correctness comes from the exact limits in <see cref="PageParser"/> (a cap on the elements the
+/// parser creates, and a walk of the real tree for its depth). Two things make a page slow or fatal to parse: deep nesting of unclosed elements (20,000 nested
 /// divs, 100 KB, took 17 seconds in AngleSharp) and a very large number of elements (100,000 unclosed optgroups, 1 MB, overflowed the stack inside SmartReader,
 /// and a stack overflow cannot be caught). A real page has tens of thousands of tags at most, closed and shallow.
-/// The scan is conservative on purpose: where it cannot be sure what the parser would do, it assumes the deeper outcome. Over-counting only means the next
-/// reader takes over; under-counting would let a hostile page through.
+/// Where it cannot be sure what the parser would do it assumes the deeper outcome, which is safe: it only means the next reader takes over.
 /// </summary>
 internal static class HtmlDepth
 {
@@ -115,12 +116,12 @@ internal static class HtmlDepth
             }
 
             var nameEnd = nameStart;
-            while (nameEnd < html.Length && !char.IsWhiteSpace(html[nameEnd]) && html[nameEnd] != '/' && html[nameEnd] != '>')
+            while (nameEnd < html.Length && !IsHtmlSpace(html[nameEnd]) && html[nameEnd] != '/' && html[nameEnd] != '>')
             {
                 nameEnd++;
             }
 
-            var name = html[nameStart..nameEnd].ToLowerInvariant();
+            var name = html[nameStart..nameEnd].AsciiLower();
             i = TagEnd(html, nameEnd);
 
             if (isEnd)
@@ -196,6 +197,29 @@ internal static class HtmlDepth
         }
     }
 
+    // The HTML white space set. Not char.IsWhiteSpace: U+00A0, U+000B and the like are not white space to the tokenizer.
+    private static bool IsHtmlSpace(char c) => c is ' ' or '\t' or '\n' or '\f' or '\r';
+
+    // ASCII only. ToLowerInvariant turns the Kelvin sign (U+212A) into 'k', so "lin" + U+212A would become "link", a void element.
+    private static string AsciiLower(this string text)
+    {
+        foreach (var c in text)
+        {
+            if (char.IsAsciiLetterUpper(c))
+            {
+                return string.Create(text.Length, text, static (span, source) =>
+                {
+                    for (var i = 0; i < span.Length; i++)
+                    {
+                        span[i] = char.IsAsciiLetterUpper(source[i]) ? (char)(source[i] | 0x20) : source[i];
+                    }
+                });
+            }
+        }
+
+        return text;
+    }
+
     private static int SkipTo(string html, int from)
     {
         var gt = html.IndexOf('>', from);
@@ -246,7 +270,7 @@ internal static class HtmlDepth
                 return k + 1;
             }
 
-            if (char.IsWhiteSpace(c) || c == '/')
+            if (IsHtmlSpace(c) || c == '/')
             {
                 k++;
                 continue;
@@ -254,14 +278,14 @@ internal static class HtmlDepth
 
             // An attribute name starts here. A leading '=' is part of the name.
             k++;
-            while (k < html.Length && !char.IsWhiteSpace(html[k]) && html[k] != '/' && html[k] != '>' && html[k] != '=')
+            while (k < html.Length && !IsHtmlSpace(html[k]) && html[k] != '/' && html[k] != '>' && html[k] != '=')
             {
                 k++;
             }
 
             // After the name: white space, then possibly '='.
             var after = k;
-            while (after < html.Length && char.IsWhiteSpace(html[after]))
+            while (after < html.Length && IsHtmlSpace(html[after]))
             {
                 after++;
             }
@@ -279,7 +303,7 @@ internal static class HtmlDepth
 
             // A value: skip white space, then a quoted value or an unquoted one.
             after++;
-            while (after < html.Length && char.IsWhiteSpace(html[after]))
+            while (after < html.Length && IsHtmlSpace(html[after]))
             {
                 after++;
             }
@@ -303,7 +327,7 @@ internal static class HtmlDepth
             else
             {
                 k = after;
-                while (k < html.Length && !char.IsWhiteSpace(html[k]) && html[k] != '>')
+                while (k < html.Length && !IsHtmlSpace(html[k]) && html[k] != '>')
                 {
                     k++;
                 }
