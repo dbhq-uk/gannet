@@ -63,12 +63,17 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
             })
             .Build();
 
-    private async Task<(ModelHandle Handle, bool Cacheable)> CreateEntryAsync(string name, ModelOptions model, CancellationToken ct) =>
-        string.Equals(model.Provider, "OpenRouter", StringComparison.OrdinalIgnoreCase)
+    private async Task<(ModelHandle Handle, bool Cacheable)> CreateEntryAsync(string name, ModelOptions model, CancellationToken ct)
+    {
+        var (handle, cacheable) = string.Equals(model.Provider, "OpenRouter", StringComparison.OrdinalIgnoreCase)
             ? await OpenRouterAsync(name, model, ct)
-            : (await CreateAsync(name, model, ct), true);
+            : await CreateAsync(name, model, ct);
 
-    private async Task<ModelHandle> CreateAsync(string name, ModelOptions model, CancellationToken ct)
+        // Every client reports failures as gannet's typed errors, never as an SDK exception that carries server text.
+        return (handle with { Client = new TypedErrorChatClient(handle.Client, model.Provider, name) }, cacheable);
+    }
+
+    private async Task<(ModelHandle Handle, bool Cacheable)> CreateAsync(string name, ModelOptions model, CancellationToken ct)
     {
         switch (model.Provider.ToLowerInvariant())
         {
@@ -78,11 +83,11 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
                     var (trained, tools) = await OllamaModelInfo.ReadAsync(http.CreateClient(HttpClientNames.Ollama), endpoint, model.Model, ct);
                     var context = model.ContextWindow ?? Math.Min(trained, OllamaDefaultContextCap);
                     var client = WithNumCtx(new OllamaApiClient(OllamaHttp(endpoint), model.Model), context);
-                    return new ModelHandle(name, client, new ModelCapabilities(context, model.SupportsTools ?? tools));
+                    return (new ModelHandle(name, client, new ModelCapabilities(context, model.SupportsTools ?? tools)), true);
                 }
 
             case "openai":
-                return Handle(name, model, OpenAiChat(RequireKey(name, model), null, null).GetChatClient(model.Model).AsIChatClient());
+                return (Handle(name, model, OpenAiChat(RequireKey(name, model), null, null).GetChatClient(model.Model).AsIChatClient()), true);
 
             case "openaicompatible":
                 {
@@ -93,13 +98,15 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
                     var served = model.ContextWindow is null
                         ? await OpenAiCompatibleInfo.ReadContextAsync(http.CreateClient(HttpClientNames.ModelServer), new Uri(endpoint), model.Model, ct, model.ApiKey)
                         : null;
-                    return Handle(name, model, client, served);
+
+                    // A probe that got no answer gives fallback values that must not stick, so the next call asks again.
+                    return (Handle(name, model, client, served), model.ContextWindow is not null || served is not null);
                 }
 
             case "azureopenai":
                 {
                     var endpoint = model.Endpoint ?? throw new InvalidOperationException($"Model '{name}' needs the Azure endpoint ending /openai/v1/.");
-                    return Handle(name, model, OpenAiChat(RequireKey(name, model), endpoint, null).GetChatClient(model.Model).AsIChatClient());
+                    return (Handle(name, model, OpenAiChat(RequireKey(name, model), endpoint, null).GetChatClient(model.Model).AsIChatClient()), true);
                 }
 
             case "anthropic":
@@ -107,13 +114,16 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
                     // Claude families that predate adaptive thinking reject thinking.type=adaptive, so the table says which form each family takes.
                     var anthropic = new AnthropicClient { ApiKey = RequireKey(name, model), HttpClient = http.CreateClient(HttpClientNames.Anthropic) };
                     var thinking = ModelCapabilityTable.UsesExtendedThinking(model.Model) ? AnthropicThinkingMode.Extended : AnthropicThinkingMode.Adaptive;
-                    return Handle(name, model, anthropic.AsIChatClient(model.Model, model.MaxOutputTokens, thinking));
+                    return (Handle(name, model, anthropic.AsIChatClient(model.Model, model.MaxOutputTokens, thinking)), true);
                 }
 
             case "gemini":
                 {
-                    var gemini = new Google.GenAI.Client(apiKey: RequireKey(name, model));
-                    return Handle(name, model, gemini.AsIChatClient(model.Model));
+                    // Requests go through the pooled chat HttpClient (no timeout of its own, the run's cancellation bounds a long generation).
+                    var gemini = new Google.GenAI.Client(
+                        apiKey: RequireKey(name, model),
+                        clientOptions: new Google.GenAI.Types.ClientOptions { HttpClientFactory = () => http.CreateClient(HttpClientNames.ModelChat) });
+                    return (Handle(name, model, gemini.AsIChatClient(model.Model)), true);
                 }
 
             case "deepseek":
@@ -121,9 +131,19 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
                     // DeepSeek's windows and tool support come from its own model table; an ID the table does not list gets the fixed fallback.
                     // Thinking is on by default there, and its reasoning_content must be sent back on every later request or the API answers 400
                     // (api-docs.deepseek.com/guides/thinking_mode). The chat adapter does not carry that field, so thinking is always switched off.
+                    // It documents only response_format {"type":"json_object"} (api-docs.deepseek.com/guides/json_mode), so a JSON schema is sent as plain JSON mode.
                     var client = OpenAiChat(RequireKey(name, model), model.Endpoint ?? DeepSeekEndpoint, new JsonBodyPolicy("thinking", """{"type":"disabled"}"""))
-                        .GetChatClient(model.Model).AsIChatClient();
-                    return Handle(name, model, client);
+                        .GetChatClient(model.Model).AsIChatClient()
+                        .AsBuilder()
+                        .ConfigureOptions(o =>
+                        {
+                            if (o.ResponseFormat is ChatResponseFormatJson { Schema: not null })
+                            {
+                                o.ResponseFormat = ChatResponseFormat.Json;
+                            }
+                        })
+                        .Build();
+                    return (Handle(name, model, client), true);
                 }
 
             default:

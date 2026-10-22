@@ -258,18 +258,76 @@ public class ServiceCatalogTests
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.TooManyRequests)]
-    [InlineData(HttpStatusCode.BadGateway)]
-    public async Task A_post_is_retried_after_429_and_5xx(HttpStatusCode status)
+    [InlineData(HttpStatusCode.TooManyRequests, true)]
+    [InlineData(HttpStatusCode.BadGateway, false)]
+    public async Task A_post_is_retried_after_429_with_a_short_retry_after_and_after_5xx(HttpStatusCode status, bool withRetryAfter)
     {
         var handler = new CountingHandler((_, n, _) => Task.FromResult(n < 3
-            ? new HttpResponseMessage(status)
+            ? WithRetryAfter(new HttpResponseMessage(status), withRetryAfter ? "0" : null)
             : StubHttpHandler.Json("{\"results\":[]}")));
         using var provider = BuildProvider(new() { ["Gannet:Search:tavily:ApiKey"] = "k" }, Stub("gannet-search-tavily", handler));
 
         await provider.GetRequiredService<IServiceCatalog>().GetSearch("tavily").SearchAsync("q", 3, CancellationToken.None);
 
         Assert.Equal(3, handler.Count);
+    }
+
+    private static HttpResponseMessage WithRetryAfter(HttpResponseMessage response, string? seconds)
+    {
+        if (seconds is not null)
+        {
+            response.Headers.TryAddWithoutValidation("Retry-After", seconds);
+        }
+
+        return response;
+    }
+
+    [Fact]
+    public async Task A_429_with_a_long_retry_after_maps_at_once_after_one_request()
+    {
+        var handler = new CountingHandler((_, _, _) => Task.FromResult(WithRetryAfter(
+            StubHttpHandler.Json("{\"error\":{\"code\":\"QUOTA_LIMITED\"}}", HttpStatusCode.TooManyRequests), "3600")));
+        using var provider = BuildProvider(new() { ["Gannet:Search:brave:ApiKey"] = "k" }, Stub("gannet-search-brave", handler));
+
+        await Assert.ThrowsAsync<QuotaExhaustedException>(() => provider.GetRequiredService<IServiceCatalog>().GetSearch("brave").SearchAsync("q", 3, CancellationToken.None));
+
+        Assert.Equal(1, handler.Count);
+    }
+
+    [Fact]
+    public async Task A_429_with_a_long_retry_after_and_no_quota_code_is_a_rate_limit_with_the_wait()
+    {
+        var handler = new CountingHandler((_, _, _) => Task.FromResult(WithRetryAfter(new HttpResponseMessage(HttpStatusCode.TooManyRequests), "3600")));
+        using var provider = BuildProvider(new() { ["Gannet:Search:tavily:ApiKey"] = "k" }, Stub("gannet-search-tavily", handler));
+
+        var error = await Assert.ThrowsAsync<RateLimitedException>(() => provider.GetRequiredService<IServiceCatalog>().GetSearch("tavily").SearchAsync("q", 3, CancellationToken.None));
+
+        Assert.Equal(TimeSpan.FromHours(1), error.RetryAfter);
+        Assert.Equal(1, handler.Count);
+    }
+
+    [Fact]
+    public async Task A_429_with_no_retry_after_is_sent_once()
+    {
+        var handler = new CountingHandler((_, _, _) => Task.FromResult(StubHttpHandler.Json("{\"error\":{\"code\":\"QUOTA_LIMITED\"}}", HttpStatusCode.TooManyRequests)));
+        using var provider = BuildProvider(new() { ["Gannet:Search:brave:ApiKey"] = "k" }, Stub("gannet-search-brave", handler));
+
+        await Assert.ThrowsAsync<QuotaExhaustedException>(() => provider.GetRequiredService<IServiceCatalog>().GetSearch("brave").SearchAsync("q", 3, CancellationToken.None));
+
+        Assert.Equal(1, handler.Count);
+    }
+
+    [Fact]
+    public async Task A_429_with_a_retry_after_of_one_second_is_retried_once()
+    {
+        var handler = new CountingHandler((_, n, _) => Task.FromResult(n == 1
+            ? WithRetryAfter(new HttpResponseMessage(HttpStatusCode.TooManyRequests), "1")
+            : StubHttpHandler.Json("{\"results\":[]}")));
+        using var provider = BuildProvider(new() { ["Gannet:Search:tavily:ApiKey"] = "k" }, Stub("gannet-search-tavily", handler));
+
+        await provider.GetRequiredService<IServiceCatalog>().GetSearch("tavily").SearchAsync("q", 3, CancellationToken.None);
+
+        Assert.Equal(2, handler.Count);
     }
 
     [Fact]
