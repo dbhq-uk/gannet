@@ -18,6 +18,9 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
     private const int UnknownModelContext = 8192;
     private const string OpenRouterEndpoint = "https://openrouter.ai/api/v1";
     private const string DeepSeekEndpoint = "https://api.deepseek.com";
+
+    // The SDK's own default. Set explicitly, because it would otherwise take GOOGLE_GEMINI_BASE_URL from the environment and send the key there.
+    private const string GeminiEndpoint = "https://generativelanguage.googleapis.com/";
     private static readonly string[] Providers = ["Ollama", "OpenAI", "OpenAICompatible", "AzureOpenAI", "Anthropic", "Gemini", "OpenRouter", "DeepSeek"];
 
     // Cacheable is false when OpenRouter did not answer and the handle holds fallback values: it is returned once and then dropped, so the next call asks again.
@@ -112,7 +115,13 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
             case "anthropic":
                 {
                     // Claude families that predate adaptive thinking reject thinking.type=adaptive, so the table says which form each family takes.
-                    var anthropic = new AnthropicClient { ApiKey = RequireKey(name, model), HttpClient = http.CreateClient(HttpClientNames.Anthropic) };
+                    // Retries are bounded and a long Retry-After is capped (ModelRetry); the SDK would wait for an hour if the service asked.
+                    var anthropic = new AnthropicClient
+                    {
+                        ApiKey = RequireKey(name, model),
+                        HttpClient = new HttpClient(new ModelRetry.CapRetryAfter(http.CreateClient(HttpClientNames.Anthropic)), disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan },
+                        MaxRetries = ModelRetry.MaxRetries,
+                    };
                     var thinking = ModelCapabilityTable.UsesExtendedThinking(model.Model) ? AnthropicThinkingMode.Extended : AnthropicThinkingMode.Adaptive;
                     return (Handle(name, model, anthropic.AsIChatClient(model.Model, model.MaxOutputTokens, thinking)), true);
                 }
@@ -125,6 +134,7 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
                         enterprise: false,
                         vertexAI: false,
                         apiKey: RequireKey(name, model),
+                        httpOptions: new Google.GenAI.Types.HttpOptions { BaseUrl = GeminiEndpoint },
                         clientOptions: new Google.GenAI.Types.ClientOptions { HttpClientFactory = () => http.CreateClient(HttpClientNames.ModelChat) });
                     return (Handle(name, model, gemini.AsIChatClient(model.Model)), true);
                 }
@@ -224,6 +234,7 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
         {
             Transport = new HttpClientPipelineTransport(http.CreateClient(HttpClientNames.ModelChat)),
             NetworkTimeout = Timeout.InfiniteTimeSpan,
+            RetryPolicy = new ModelRetry.Policy(),
         };
         if (endpoint is not null)
         {
