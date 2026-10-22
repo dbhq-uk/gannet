@@ -1,0 +1,10 @@
+$ docker run --name searxng-limiter -d --network searxng-net \
+  -p 127.0.0.1:8890:8080 \
+  -v "$PWD/settings-limiter.yml:/etc/searxng/settings.yml:ro" \
+  -v "$PWD/limiter.toml:/etc/searxng/limiter.toml:ro" \
+  searxng/searxng@sha256:5ed0323b5f5f8701264ef65e239a2bd83cb57098f2b971fa30bf79c06eeae271
+7cd369829745f25fe8ae388b34592b242853fe13f9417d72f1af9114e1398622
+$ curl -s -o /dev/null -w 'HTTP %{http_code}\n' 'http://127.0.0.1:8890/search?q=searxng&format=json'
+HTTP 200
+$ curl -s 'http://127.0.0.1:8890/search?q=searxng&format=json' | jq '.results | length'
+38

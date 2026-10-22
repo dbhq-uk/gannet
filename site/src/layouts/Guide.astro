@@ -1,0 +1,78 @@
+---
+// One layout for every guide. The copy is Markdown in src/content/guides/; the
+// page file names the slug and what the article is about.
+//
+// A guide is a guide, not a landing page (terraken's rule, kept): the
+// best answer to its query whether or not the reader ever runs gannet, with
+// gannet in one section near the end.
+import Base from "./Base.astro";
+import { nav } from "../lib/site";
+import { faqNode, guideArticle } from "../lib/schema";
+import { faqsFrom } from "../lib/faqs.mjs";
+import { lastmodFor } from "../lib/content-dates.mjs";
+
+interface Props {
+  path: string;
+  md: { Content: any; frontmatter: { title: string; description: string; h1: string }; getHeadings: () => { depth: number; slug: string; text: string }[] };
+  raw: string;
+  about: readonly string[];
+}
+
+const { path, md, raw, about } = Astro.props;
+const { Content, frontmatter } = md;
+const self = nav.find((n) => n.path === path);
+if (!self) throw new Error(`Guide ${path} is not in nav`);
+const toc = md.getHeadings().filter((x) => x.depth === 2);
+const faqs = faqsFrom(raw);
+const canonical = new URL(path, Astro.site).href;
+const modified = lastmodFor(path) ?? new Date().toISOString().slice(0, 10);
+const others = nav.filter((n) => n.path !== path);
+---
+
+<Base
+  title={frontmatter.title}
+  description={frontmatter.description}
+  pageType="TechArticle"
+  crumb={self.crumb}
+  pageProps={guideArticle(frontmatter.h1, about, modified)}
+  schema={faqs.length ? [faqNode(`${canonical}#faq`, faqs)] : []}
+>
+  <header class="page-head">
+    <div class="container">
+      <nav class="crumb" aria-label="Breadcrumb"><a href="/">gannet</a></nav>
+      <h1 class="guide-h1">{frontmatter.h1}</h1>
+      <p class="lead">{frontmatter.description}</p>
+      <p class="guide-meta">Updated <time datetime={modified}>{new Date(modified + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</time></p>
+      <nav class="toc" aria-labelledby="toc-label">
+        <p class="toc-label mono-label" id="toc-label">On this page</p>
+        <ol class="toc-list" role="list">
+          {toc.map((x) => <li><a href={`#${x.slug}`}>{x.text}</a></li>)}
+        </ol>
+      </nav>
+    </div>
+  </header>
+
+  <article class="section section--tight">
+    <div class="container">
+      <div class="prose">
+        <Content />
+      </div>
+
+      <aside class="onward" aria-labelledby="onward-label">
+        <p class="onward-label mono-label" id="onward-label">More guides</p>
+        <ul class="onward-list" role="list">
+          <li class="onward-card"><a href="/">gannet</a><p>The deep research agent these guides are published beside, and where its build stands.</p></li>
+          {others.map((n) => <li class="onward-card"><a href={n.path}>{n.label}</a><p>{n.blurb}</p></li>)}
+        </ul>
+      </aside>
+    </div>
+  </article>
+</Base>
+
+<style>
+  .guide-h1 { max-width: 20ch; }
+  .guide-meta { margin-top: 14px; font-size: .9rem; color: var(--text-3); }
+  .toc-list { columns: 2; column-gap: 40px; display: block; }
+  .toc-list li { margin-bottom: 7px; break-inside: avoid; }
+  @media (max-width: 760px) { .toc-list { columns: 1; } }
+</style>

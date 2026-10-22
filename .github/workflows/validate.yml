@@ -51,3 +51,26 @@ jobs:
           else
             echo "No Dockerfile yet"
           fi
+
+  site:
+    # gannet.dbhq.uk lives in site/ (terraken's layout, dbhq repo
+    # docs/reference/hosting.md). This runs its suite on every pull request, so
+    # a change that breaks the site cannot merge. deploy-site.yml runs it again
+    # on the bytes it is about to upload.
+    name: site build and tests
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 because the sitemap's <lastmod> is read from git history
+      # (site/src/lib/content-dates.mjs), which refuses a shallow clone.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+      - run: npm test
+        working-directory: site

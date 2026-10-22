@@ -1,0 +1,90 @@
+/* gannet.dbhq.uk - design tokens.
+
+   THE REFERENCE is Superhuman's style as Refero records it, "golden hour
+   editorial" (Dan, 21 Oct 2026), put into gannet's own colours. The mapping,
+   one line each, is in site/DESIGN.md and in the site spec in the dbhq repo
+   (docs/superpowers/specs/2026-10-21-gannet-site-design.md, "The look").
+
+   The token NAMES are terraken's, so the components copied from that site keep
+   working; the VALUES are this site's. Where a name now means something
+   different from terraken's (--ink is navy here, not the DBHQ ink), the note
+   beside it says so. */
+
+:root {
+  /* Surfaces. Warm parchment is the page; white is a card raised off it. */
+  --bg: #F2F0EB;
+  --surface: #FFFFFF;
+  --surface-2: #E9E6DF;
+
+  /* Text. Charcoal, never pure black (the reference's own rule), then two
+     quieter steps, both measured against --bg: --text-2 #4A4846 is 8.6:1 and
+     --text-3 #666666 is 5.2:1. */
+  --text: #292827;
+  --text-2: #4A4846;
+  --text-3: #666666;
+
+  /* Links and the focus ring only. The reference uses a violet here; gannet
+     uses DBHQ blue, so a link looks like a link across the estate. */
+  --blue: #2B6BF3;
+  --blue-deep: #1D53D8;
+  --on-accent: #FFFFFF;
+
+  /* Hairlines. No drop shadows anywhere on the page: depth is the photograph
+     and the glass, never elevation. */
+  --border: #E3E3E2;
+  --border-2: #D2D0CA;
+
+  /* NAVY is the brand colour and does the reference's "Midnight Wine" job:
+     the primary button, the status strip and the footer. It is named --ink so
+     that terraken's .band-ink rules read as navy bands here. --ink-text is
+     body text ON navy (12.1:1); --ink-line the hairline inside it. */
+  --ink: #102A4C;
+  --ink-deep: #0B1F3A;
+  --ink-text: #DCE3EC;
+  --ink-line: #23406A;
+
+  /* SEA is the one full-bleed dark band a page may carry, once at most: the
+     reference's "Deep Lagoon", pulled towards the colour of the water in the
+     underwater photograph that sits in it. */
+  --sea: #0C3B3C;
+  --sea-text: #D8E8E5;
+
+  /* GOLD belongs to the mark's eye. It is listed so nobody adds it again under
+     another name: it is not used for any text, border or fill on the page. */
+  --gold: #F2B632;
+
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-panel: 0 0 0 1px var(--border);
+
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-btn: 999px;
+  --r-md: 16px;
+  --r-lg: 16px;
+
+  /* A 4px base, as the reference. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+  --s-9: 80px;
+  --s-10: 96px;
+
+  --max: 1200px;
+  --max-wide: 1200px;
+  --pad: clamp(20px, 5vw, 40px);
+
+  --section-tight: clamp(48px, 5vw, 64px);
+  --section-standard: clamp(64px, 8vw, 96px);
+  --section-roomy: clamp(88px, 10vw, 128px);
+
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+
+  --font: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+}

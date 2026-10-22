@@ -1,0 +1,50 @@
+# Cloudflare Pages response headers for every route on gannet.dbhq.uk.
+# https://developers.cloudflare.com/pages/configuration/headers/
+#
+# These apply AT THE EDGE ONLY. `astro preview` will not send them, so verify
+# with `curl -I` against the deployed host, never against a local server.
+#
+# THE CSP ALLOWS EXACTLY ONE THIRD-PARTY ORIGIN, and it is Google Analytics
+# (16 Sep 2026). Everything else is still 'self': no captcha, no embed, no font
+# host, no inline script. script-src has no 'unsafe-inline', which is why
+# analytics.js and consent.js are same-origin module files rather than Google's
+# own inline snippet - an inline block took modem's page down once already.
+#
+# GA RUNS BY DEFAULT, ANALYTICS ONLY, WITH A NOTICE AND AN OPT-OUT (30 Sep
+# 2026), under the PECR statistical-purposes exception. Until then it was
+# opt-in and loaded nothing until a reader accepted. Ad storage is denied and
+# Signals and ad personalisation are off, which is what keeps it inside the
+# exception; src/components/AnalyticsNotice.astro is the notice and
+# "Cookie settings" in the footer reopens it. An opted-out reader loads
+# nothing from these origins at all. GA4 sets its cookie on the shared
+# .dbhq.uk parent, so the opt-out is a cookie there too, and it holds across
+# every *.dbhq.uk site. dbhq/docs/reference/analytics.md is the record.
+#
+# googletagmanager.com is in script-src and img-src; google-analytics.com and
+# analytics.google.com are in img-src and connect-src, because GA beacons both
+# as an image and as fetch/beacon depending on the browser. Dropping any one of
+# them loses measurement silently rather than loudly.
+#
+# style-src needs 'unsafe-inline' because Astro inlines every stylesheet into
+# the document (build.inlineStylesheets: 'always' in astro.config.mjs), which is
+# what keeps the first paint unblocked. That is the only other relaxation here.
+#
+# Adding any further origin means asking what it sets and whether the notice
+# already covers it. It almost certainly does not.
+#
+# HSTS: the dbhq.uk zone sends includeSubDomains, so this hostname is already
+# committed to HTTPS by the apex. Sending it here as well means the header is
+# right whether the request arrives through the zone or straight at the Pages
+# project.
+/*
+  Strict-Transport-Security: max-age=15552000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com; connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; manifest-src 'self'; frame-src 'none'; upgrade-insecure-requests
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=()
+
+# The fonts are self-hosted and immutable - their filenames never change, so a
+# long max-age is safe and a re-download on every page is not.
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable

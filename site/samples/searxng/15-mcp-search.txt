@@ -1,0 +1,15 @@
+$ ./mcp_session.sh search "searxng docker" | jq -r '.result.content[0].text' | head -n 14
+Suggestions: searxng docker windows, searxng-docker github, searxng docker compose, searxng docker environment variables, searxng-docker yaml, searxng docker install, searxng docker yaml, install searxng docker-compose, searxng - docker hub, searxng-docker desktop
+
+---
+
+Title: GitHub - searxng/searxng-docker · GitHub
+Description: 28 Mar 2026 ... Repository navigation · NotificationsYou must be signed in to change notification settings · Fork677 (677) · Star3.3k (3.3k)You must be signed ...
+URL: https://github.com/searxng/searxng-docker
+Relevance Score: 4.000
+Engines: google cse, brave
+Category: general
+Thumbnail: https://imgs.search.brave.com/idECZ9_lyhTmpTISzwQhMNCGBN-k7P6HLWFrdpI8EWQ/rs:fit:200:200:1:0/g:ce/aHR0cHM6Ly9vcGVu/Z3JhcGguZ2l0aHVi/YXNzZXRzLmNvbS81/MWViNGU0MTA4NGY1/NmZmMWJlYmNmNTE2/OGQ1M2NhOGNlOTBk/OGMwYjM5NDY2MGFm/YjVjODc1ZDBiYjgw/YTg5L3NlYXJ4bmcv/c2VhcnhuZy1kb2Nr/ZXI
+
+Title: SearXNG: Your Private Search Engine - Docker Tutorial - YouTube
+Description: Thanks to DataCamp for sponsoring today's video!Learn Cloud Computing with Datacamp: https://datacamp.pxf.io/9gbEdETired of Google tracking your every search...

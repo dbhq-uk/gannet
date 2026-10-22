@@ -1,0 +1,6 @@
+$ docker --version; python3 --version; dotnet --version; node --version; jq --version
+Docker version 29.8.1, build 4a63305
+Python 3.12.3
+10.0.400
+v24.21.0
+jq-1.7

@@ -1,4 +1,17 @@
+<p align="center">
+  <a href="https://gannet.dbhq.uk/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/lockup-white.svg">
+      <img src="assets/lockup.svg" alt="gannet" width="320">
+    </picture>
+  </a>
+</p>
+
 # gannet
+
+**[gannet.dbhq.uk](https://gannet.dbhq.uk/)** - what gannet is being built to
+do, where the build stands, and guides on deep research, search APIs and
+judging sources.
 
 Deep research in C#. Give it a question and it plans the research, searches
 the web, weighs each source, and writes a report in which every claim is

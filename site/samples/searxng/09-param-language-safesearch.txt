@@ -1,0 +1,7 @@
+$ curl -s 'http://127.0.0.1:8888/search?q=wetter+berlin&format=json&language=de&safesearch=2' \
+  | jq '{query, results: (.results | length), first: .results[0].title}'
+{
+  "query": "wetter berlin",
+  "results": 30,
+  "first": "Wetter Berlin heute - aktuelle Wettervorhersage für Berlin - wetter.com"
+}

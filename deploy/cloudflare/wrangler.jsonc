@@ -1,5 +1,5 @@
 {
-  // gannet on Cloudflare Containers. The custom domain gannet.dbhq.uk is attached by
+  // gannet on Cloudflare Containers. The custom domain gannet-app.dbhq.uk is attached by
   // Terraform in dbhq-uk/dbhq (infra/terraform/gannet.tf), after its Access application,
   // so this file declares no routes.
   "name": "gannet",

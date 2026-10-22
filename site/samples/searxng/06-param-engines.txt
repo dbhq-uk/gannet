@@ -1,0 +1,6 @@
+$ curl -s 'http://127.0.0.1:8888/search?q=searxng&format=json&engines=brave,bing' \
+  | jq '[.results[].engine] | unique'
+[
+  "bing",
+  "brave"
+]

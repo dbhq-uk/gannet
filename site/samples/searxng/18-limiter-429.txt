@@ -1,0 +1,19 @@
+$ docker run --name searxng-limiter -d --network searxng-net \
+  -p 127.0.0.1:8890:8080 \
+  -v "$PWD/settings-limiter.yml:/etc/searxng/settings.yml:ro" \
+  searxng/searxng@sha256:5ed0323b5f5f8701264ef65e239a2bd83cb57098f2b971fa30bf79c06eeae271
+1bcb1574e1de34af495551c3a1408441ed95b51c6d027036b77cc4c1df0c1c8a
+$ curl -si 'http://127.0.0.1:8890/search?q=searxng&format=json'
+HTTP/1.1 429 Too Many Requests
+content-type: text/html; charset=utf-8
+content-length: 17
+server-timing: total;dur=3.084, render;dur=0
+x-content-type-options: nosniff
+x-download-options: noopen
+x-robots-tag: noindex, nofollow
+referrer-policy: no-referrer
+server: granian
+date: Wed, 21 Oct 2026 18:46:33 GMT
+
+Too Many Requests$ docker logs searxng-limiter 2>&1 | grep 'botdetection:'
+2026-10-21 18:46:33,111 ERROR:searx.botdetection: X-Forwarded-For nor X-Real-IP header is set!

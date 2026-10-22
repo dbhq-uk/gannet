@@ -1,0 +1,14 @@
+# Minimal SearXNG settings for a local JSON search API.
+# Everything not listed here keeps the image default.
+use_default_settings: true
+
+server:
+  # Placeholder for this guide. Make your own with: openssl rand -hex 32
+  secret_key: "change-me-gannet-guide-placeholder-7f3a9c"
+  limiter: false
+  image_proxy: false
+
+search:
+  formats:
+    - html
+    - json

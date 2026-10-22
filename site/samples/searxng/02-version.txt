@@ -1,0 +1,2 @@
+$ docker logs searxng 2>&1 | head -n 1
+SearXNG 2026.10.19-81371861f

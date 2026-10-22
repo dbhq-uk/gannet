@@ -1,0 +1,6 @@
+# Let the Docker bridge network through the limiter. Only safe while the
+# published port is bound to 127.0.0.1, as it is in this guide.
+[botdetection.ip_lists]
+pass_ip = [
+  '172.16.0.0/12',
+]

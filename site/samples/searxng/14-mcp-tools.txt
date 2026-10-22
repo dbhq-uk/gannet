@@ -1,0 +1,25 @@
+$ ./mcp_session.sh tools-list | jq '[.result.tools[] | {name, required: .inputSchema.required}]'
+[
+  {
+    "name": "searxng_web_search",
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "searxng_search_suggestions",
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "searxng_instance_info",
+    "required": []
+  },
+  {
+    "name": "web_url_read",
+    "required": [
+      "url"
+    ]
+  }
+]
