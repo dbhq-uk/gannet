@@ -19,6 +19,9 @@ public class RemoteReadersTests
 
     public static TheoryData<string> KeyedKinds => ["brightdata", "parallel", "exa"];
 
+    // The readers whose response has a title field. Tavily and Bright Data return none, so their title is the host.
+    public static TheoryData<string> TitledKinds => ["jina", "firecrawl", "parallel", "exa"];
+
     private static Task<IPAddress[]> PublicDns(string host, CancellationToken ct) => Task.FromResult(new[] { IPAddress.Parse("93.184.216.34") });
 
     private static IPageReader Create(string kind, StubHttpHandler handler, string? key = Secret, bool keyless = false, Func<string, CancellationToken, Task<IPAddress[]>>? resolve = null)
@@ -83,6 +86,29 @@ public class RemoteReadersTests
             .ReadAsync(new Uri("https://site.example/a/b?x=1&y=two#section-3"), 8000, CancellationToken.None);
 
         Assert.Equal("https://r.jina.ai/https://site.example/a/b?x=1&y=two", Assert.Single(handler.Requests).Uri.ToString());
+    }
+
+    [Fact]
+    public async Task Jina_sends_a_unicode_host_as_punycode()
+    {
+        var handler = new StubHttpHandler(_ => Ok("jina", "body"));
+        await new JinaReader(handler.Client(), "jina", new ServiceOptions(), PublicDns)
+            .ReadAsync(new Uri("https://b\u00FCcher.example/x?y=1"), 8000, CancellationToken.None);
+
+        Assert.Equal("https://r.jina.ai/https://xn--bcher-kva.example/x?y=1", Assert.Single(handler.Requests).Uri.ToString());
+    }
+
+    [Theory]
+    [InlineData("https://site.example:8443/a?b=c#frag", "https://r.jina.ai/https://site.example:8443/a?b=c")]
+    [InlineData("http://site.example/", "https://r.jina.ai/http://site.example/")]
+    [InlineData("https://site.example", "https://r.jina.ai/https://site.example/")]
+    [InlineData("http://site.example:80/p", "https://r.jina.ai/http://site.example/p")]
+    public async Task Jina_keeps_a_non_default_port_and_drops_a_default_one(string target, string expected)
+    {
+        var handler = new StubHttpHandler(_ => Ok("jina", "body"));
+        await new JinaReader(handler.Client(), "jina", new ServiceOptions(), PublicDns).ReadAsync(new Uri(target), 8000, CancellationToken.None);
+
+        Assert.Equal(expected, Assert.Single(handler.Requests).Uri.ToString());
     }
 
     [Fact]
@@ -259,6 +285,7 @@ public class RemoteReadersTests
     [Theory]
     [InlineData("x-brd-error-code", "reject_block")]
     [InlineData("x-brd-error", "captcha or protection page found")]
+    [InlineData("x-brd-err-code", "policy_20020")]
     public async Task Bright_data_error_headers_on_a_200_are_a_failure_with_fixed_text(string header, string value)
     {
         var handler = new StubHttpHandler(_ =>
@@ -440,20 +467,26 @@ public class RemoteReadersTests
     }
 
     [Theory]
-    [MemberData(nameof(Kinds))]
+    [MemberData(nameof(TitledKinds))]
     public async Task A_long_title_is_cut_and_kept_on_one_line(string kind)
     {
-        if (kind is "brightdata" or "tavily")
-        {
-            return;
-        }
-
         var handler = new StubHttpHandler(_ => Ok(kind, "body", "line one\nline two " + new string('t', 5000)));
         var page = await Read(Create(kind, handler));
 
         Assert.True(page.Title.Length <= 300);
         Assert.DoesNotContain('\n', page.Title);
         Assert.StartsWith("line one line two", page.Title, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("tavily")]
+    [InlineData("brightdata")]
+    public async Task A_reader_whose_service_sends_no_title_uses_the_host(string kind)
+    {
+        var handler = new StubHttpHandler(_ => Ok(kind, "body"));
+        var page = await Read(Create(kind, handler));
+
+        Assert.Equal("site.example", page.Title);
     }
 
     [Theory]
@@ -555,6 +588,25 @@ public class RemoteReadersTests
             await Assert.ThrowsAsync<ServiceFailedException>(() => reader.ReadAsync(new Uri(address), 8000, CancellationToken.None));
             Assert.Empty(handler.Requests);
         }
+    }
+
+    [Theory]
+    [MemberData(nameof(Kinds))]
+    public async Task A_refusal_names_the_reader_and_not_the_built_in_reader(string kind)
+    {
+        var handler = new StubHttpHandler(_ => Ok(kind, "body"));
+        var reader = Create(kind, handler, resolve: (_, _) => Task.FromResult(new[] { IPAddress.Parse("192.168.1.20") }));
+        var addresses = new[] { "http://127.0.0.1/x", "http://intranet.local/x", "https://private.example/x", "file:///etc/passwd", "https://user:pass@site.example/x" };
+
+        foreach (var address in addresses)
+        {
+            var error = await Assert.ThrowsAsync<ServiceFailedException>(() => reader.ReadAsync(new Uri(address), 8000, CancellationToken.None));
+            Assert.Equal(reader.DisplayName, error.Service);
+        }
+
+        var unresolved = Create(kind, handler, resolve: (_, _) => throw new System.Net.Sockets.SocketException());
+        var notFound = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(unresolved));
+        Assert.Equal(unresolved.DisplayName, notFound.Service);
     }
 
     [Theory]

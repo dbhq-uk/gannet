@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using Gannet.Core.Configuration;
 using Gannet.Core.Services;
@@ -20,7 +21,9 @@ internal sealed class JinaReader(HttpClient http, string name, ServiceOptions op
         var endpoint = (Options.Endpoint ?? "https://r.jina.ai").TrimEnd('/');
 
         // The target goes into the path, with its own query string. A fragment is never sent to a server, so it is dropped (Reader README, "SPAs with hash-based routing").
-        var target = url.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped);
+        // IdnHost is the punycode form, so a unicode host is sent as ASCII.
+        var port = url.IsDefaultPort ? string.Empty : $":{url.Port.ToString(CultureInfo.InvariantCulture)}";
+        var target = $"{url.Scheme}://{url.IdnHost}{port}{url.PathAndQuery}";
         var request = new HttpRequestMessage(HttpMethod.Get, $"{endpoint}/{target}");
         request.Headers.Accept.ParseAdd("application/json");
         request.Headers.Add("X-Respond-With", "markdown");

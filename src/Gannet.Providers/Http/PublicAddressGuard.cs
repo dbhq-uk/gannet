@@ -10,7 +10,7 @@ namespace Gannet.Providers.Http;
 /// </summary>
 internal static class PublicAddressGuard
 {
-    private const string Service = "Built-in reader";
+    private const string DefaultService = "Built-in reader";
 
     private static readonly (byte[] Prefix, int Bits)[] BlockedV4 =
     [
@@ -65,19 +65,23 @@ internal static class PublicAddressGuard
             && !(bytes[0] == 0x01 && bytes.AsSpan(1, 7).IndexOfAnyExcept((byte)0) < 0);           // 100::/64
     }
 
-    /// <summary>Throws <see cref="ServiceFailedException"/> unless the address is http or https, has no userinfo and resolves only to public addresses.</summary>
-    public static Task EnsurePublicAsync(Uri url, CancellationToken ct) => EnsurePublicAsync(url, Dns.GetHostAddressesAsync, ct);
+    /// <summary>
+    /// Throws <see cref="ServiceFailedException"/> unless the address is http or https, has no userinfo and resolves only to public addresses.
+    /// The exception names <paramref name="service"/>, the reader that was asked to fetch the page.
+    /// </summary>
+    public static Task EnsurePublicAsync(Uri url, CancellationToken ct, string service = DefaultService) =>
+        EnsurePublicAsync(url, Dns.GetHostAddressesAsync, ct, service);
 
-    internal static async Task EnsurePublicAsync(Uri url, Func<string, CancellationToken, Task<IPAddress[]>> resolve, CancellationToken ct)
+    internal static async Task EnsurePublicAsync(Uri url, Func<string, CancellationToken, Task<IPAddress[]>> resolve, CancellationToken ct, string service = DefaultService)
     {
         if (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
         {
-            throw new ServiceFailedException(Service, "Only http and https addresses can be read.");
+            throw new ServiceFailedException(service, "Only http and https addresses can be read.");
         }
 
         if (url.UserInfo.Length > 0)
         {
-            throw new ServiceFailedException(Service, "Addresses that carry a login are not read.");
+            throw new ServiceFailedException(service, "Addresses that carry a login are not read.");
         }
 
         var host = url.IdnHost.TrimEnd('.');
@@ -85,7 +89,7 @@ internal static class PublicAddressGuard
         {
             if (!IsPublic(literal))
             {
-                throw new ServiceFailedException(Service, "The page address is not a public address.");
+                throw new ServiceFailedException(service, "The page address is not a public address.");
             }
 
             return;
@@ -93,7 +97,7 @@ internal static class PublicAddressGuard
 
         if (host.Length == 0 || IsLocalName(host))
         {
-            throw NotPublic(host);
+            throw NotPublic(host, service);
         }
 
         IPAddress[] addresses;
@@ -103,12 +107,12 @@ internal static class PublicAddressGuard
         }
         catch (SocketException)
         {
-            throw new ServiceFailedException(Service, $"{host} could not be found.");
+            throw new ServiceFailedException(service, $"{host} could not be found.");
         }
 
         if (addresses.Length == 0 || !addresses.All(IsPublic))
         {
-            throw NotPublic(host);
+            throw NotPublic(host, service);
         }
     }
 
@@ -149,10 +153,10 @@ internal static class PublicAddressGuard
 
     /// <summary>Never carries an IP address: for an IP-literal host the message does not name it.</summary>
     public static ServiceFailedException Unreachable(string host) =>
-        new(Service, IPAddress.TryParse(host, out _) ? "The page address could not be reached." : $"{host.TrimEnd('.')} could not be reached.");
+        new(DefaultService, IPAddress.TryParse(host, out _) ? "The page address could not be reached." : $"{host.TrimEnd('.')} could not be reached.");
 
-    private static ServiceFailedException NotPublic(string host) =>
-        new(Service, IPAddress.TryParse(host, out _) ? "The page address is not a public address." : $"{host.TrimEnd('.')} is not a public address");
+    private static ServiceFailedException NotPublic(string host, string service = DefaultService) =>
+        new(service, IPAddress.TryParse(host, out _) ? "The page address is not a public address." : $"{host.TrimEnd('.')} is not a public address");
 
     private static bool IsLocalName(string host) =>
         host.Equals("localhost", StringComparison.OrdinalIgnoreCase)

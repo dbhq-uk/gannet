@@ -32,7 +32,7 @@ internal abstract class RemoteReaderBase(HttpClient http, string name, ServiceOp
 
     public async Task<PageContent> ReadAsync(Uri url, int maxCharacters, CancellationToken ct)
     {
-        await PublicAddressGuard.EnsurePublicAsync(url, resolve, ct);
+        await PublicAddressGuard.EnsurePublicAsync(url, resolve, ct, DisplayName);
 
         var (title, markdown) = await FetchAsync(url, ct);
         if (string.IsNullOrWhiteSpace(markdown))

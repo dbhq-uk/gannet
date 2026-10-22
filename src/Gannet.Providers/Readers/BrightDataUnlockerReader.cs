@@ -35,16 +35,18 @@ internal sealed class BrightDataUnlockerReader : RemoteReaderBase
 
     protected override async Task<(string Title, string Markdown)> FetchAsync(Uri url, CancellationToken ct)
     {
+        var key = RequireKey();
         var request = PostJson("https://api.brightdata.com/request", new { zone, url = url.ToString(), format = "raw", data_format = "markdown" });
-        request.Headers.Authorization = new("Bearer", RequireKey());
+        request.Headers.Authorization = new("Bearer", key);
 
         using (request)
         {
             using var response = await ServiceHttp.SendCheckedAsync(Http, request, DisplayName, IsQuotaResponseAsync, ct);
 
-            // Once a request reaches the unlocker the outer status is 200. An unlock that failed says so in x-brd-error or x-brd-error-code, and the status
-            // of the page itself is in x-brd-status-code. Neither is text we want to read as the page, and neither is copied into a message.
-            if (response.Headers.Contains("x-brd-error") || response.Headers.Contains("x-brd-error-code"))
+            // Once a request reaches the unlocker the outer status is 200. An unlock that failed says so in x-brd-error or x-brd-error-code, or in x-brd-err-code
+            // for a proxy-level error passed through (its quota codes were handled above). The status of the page itself is in x-brd-status-code.
+            // None of these is text we want to read as the page, and none is copied into a message.
+            if (response.Headers.Contains("x-brd-error") || response.Headers.Contains("x-brd-error-code") || response.Headers.Contains("x-brd-err-code"))
             {
                 throw new ServiceFailedException(DisplayName, $"{DisplayName} could not unlock the page.");
             }
