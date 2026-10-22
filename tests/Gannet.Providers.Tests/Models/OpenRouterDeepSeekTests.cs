@@ -292,6 +292,56 @@ public class OpenRouterDeepSeekTests
         Assert.Equal(model, body.GetProperty("model").GetString());
     }
 
+    private static readonly ChatOptions SchemaOptions = new()
+    {
+        ResponseFormat = ChatResponseFormat.ForJsonSchema(JsonDocument.Parse("""{ "type": "object", "properties": { "a": { "type": "string" } } }""").RootElement, "answer"),
+    };
+
+    [Fact]
+    public async Task Deepseek_gets_json_object_mode_even_when_a_schema_was_asked_for()
+    {
+        var handler = Routed();
+        var factory = Factory(new() { ["d"] = new ModelOptions { Provider = "DeepSeek", Model = "deepseek-flash", ApiKey = Secret } }, handler);
+
+        await (await factory.GetAsync("d", CancellationToken.None)).Client.GetResponseAsync("hi", SchemaOptions);
+
+        var body = JsonDocument.Parse(Chat(handler).Body!).RootElement;
+        Assert.Equal("json_object", body.GetProperty("response_format").GetProperty("type").GetString());
+        Assert.DoesNotContain("json_schema", Chat(handler).Body!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Deepseek_keeps_plain_json_mode_and_leaves_the_callers_options_alone()
+    {
+        var handler = Routed();
+        var factory = Factory(new() { ["d"] = new ModelOptions { Provider = "DeepSeek", Model = "deepseek-flash", ApiKey = Secret } }, handler);
+        var mine = new ChatOptions { ResponseFormat = ChatResponseFormat.Json };
+
+        var client = (await factory.GetAsync("d", CancellationToken.None)).Client;
+        await client.GetResponseAsync("hi", mine);
+        await client.GetResponseAsync("hi", SchemaOptions);
+
+        Assert.Equal("json_object", JsonDocument.Parse(handler.Requests.First(r => r.Method == HttpMethod.Post).Body!).RootElement.GetProperty("response_format").GetProperty("type").GetString());
+        Assert.Same(ChatResponseFormat.Json, mine.ResponseFormat);
+        Assert.IsType<ChatResponseFormatJson>(SchemaOptions.ResponseFormat);
+        Assert.NotNull(((ChatResponseFormatJson)SchemaOptions.ResponseFormat!).Schema);
+    }
+
+    [Theory]
+    [InlineData("OpenRouter")]
+    [InlineData("OpenAI")]
+    public async Task Other_providers_still_send_the_json_schema(string provider)
+    {
+        var handler = Routed();
+        var factory = Factory(new() { ["o"] = new ModelOptions { Provider = provider, Model = "acme/big", ApiKey = Secret, ContextWindow = 4096, SupportsTools = true } }, handler);
+
+        await (await factory.GetAsync("o", CancellationToken.None)).Client.GetResponseAsync("hi", SchemaOptions);
+
+        var format = JsonDocument.Parse(Chat(handler).Body!).RootElement.GetProperty("response_format");
+        Assert.Equal("json_schema", format.GetProperty("type").GetString());
+        Assert.Equal("answer", format.GetProperty("json_schema").GetProperty("name").GetString());
+    }
+
     [Theory]
     [InlineData("deepseek-v4-pro", 1_000_000, true)]
     [InlineData("deepseek-flash", 1_000_000, true)]

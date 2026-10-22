@@ -202,6 +202,47 @@ public class ChatClientFactoryTests
         Assert.Equal(20000, first.Capabilities.ContextWindow);
     }
 
+    [Fact]
+    public async Task An_unanswered_openai_compatible_probe_is_not_cached_and_an_answered_one_is()
+    {
+        var down = true;
+        var handler = new StubHttpHandler(r => down
+            ? StubHttpHandler.Json("{}", HttpStatusCode.ServiceUnavailable)
+            : r.RequestUri!.AbsolutePath == "/v1/models"
+                ? StubHttpHandler.Json("""{ "data": [ { "id": "m", "max_model_len": 40960 } ] }""")
+                : StubHttpHandler.Json("{}", HttpStatusCode.NotFound));
+        var factory = Factory(new() { ["srv"] = new ModelOptions { Provider = "OpenAICompatible", Endpoint = "http://spark:8000/v1", Model = "m" } }, handler);
+
+        var fallback = await factory.GetAsync("srv", CancellationToken.None);
+        var afterFirst = handler.Requests.Count;
+        await factory.GetAsync("srv", CancellationToken.None);
+
+        Assert.Equal(8192, fallback.Capabilities.ContextWindow);
+        Assert.True(handler.Requests.Count > afterFirst, "the second call should have probed again");
+
+        down = false;
+        var answered = await factory.GetAsync("srv", CancellationToken.None);
+        var afterAnswer = handler.Requests.Count;
+        var again = await factory.GetAsync("srv", CancellationToken.None);
+
+        Assert.Equal(40960, answered.Capabilities.ContextWindow);
+        Assert.Same(answered, again);
+        Assert.Equal(afterAnswer, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task A_configured_openai_compatible_window_needs_no_probe_and_is_cached()
+    {
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json("{}", HttpStatusCode.ServiceUnavailable));
+        var factory = Factory(new() { ["srv"] = new ModelOptions { Provider = "OpenAICompatible", Endpoint = "http://spark:8000/v1", Model = "m", ContextWindow = 4096 } }, handler);
+
+        var first = await factory.GetAsync("srv", CancellationToken.None);
+        var second = await factory.GetAsync("srv", CancellationToken.None);
+
+        Assert.Same(first, second);
+        Assert.Empty(handler.Requests);
+    }
+
     [Theory]
     [InlineData("OpenAI")]
     [InlineData("AzureOpenAI")]
