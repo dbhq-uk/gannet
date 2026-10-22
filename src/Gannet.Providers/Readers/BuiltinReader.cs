@@ -32,6 +32,7 @@ internal sealed class BuiltinReader : IPageReader
     private readonly TimeSpan parseTimeout;
     private readonly TimeSpan downloadTimeout;
     private readonly bool skipPrefilter;
+    private readonly Func<Uri, AngleSharp.Html.Dom.IHtmlDocument, (bool Readable, string Title, string Content)> readArticle;
     private readonly SemaphoreSlim gate;
     private readonly Func<Uri, string, (string Title, string Markdown)> parse;
 
@@ -51,7 +52,8 @@ internal sealed class BuiltinReader : IPageReader
         SemaphoreSlim? gate = null,
         Func<Uri, string, (string Title, string Markdown)>? parse = null,
         TimeSpan? downloadTimeout = null,
-        bool skipPrefilter = false)
+        bool skipPrefilter = false,
+        Func<Uri, AngleSharp.Html.Dom.IHtmlDocument, (bool Readable, string Title, string Content)>? readArticle = null)
     {
         this.http = http;
         this.allowPrivateAddresses = allowPrivateAddresses;
@@ -59,6 +61,7 @@ internal sealed class BuiltinReader : IPageReader
         this.parseTimeout = parseTimeout ?? DefaultParseTimeout;
         this.downloadTimeout = downloadTimeout ?? DefaultDownloadTimeout;
         this.skipPrefilter = skipPrefilter;
+        this.readArticle = readArticle ?? ReadArticleWithSmartReader;
         this.gate = gate ?? DefaultGate;
         this.parse = parse ?? Extract;
     }
@@ -264,10 +267,16 @@ internal sealed class BuiltinReader : IPageReader
         // Read the fallback text first: SmartReader rewrites the tree it is given.
         var (text, pageTitle) = PageParser.PlainText(document);
 
-        // Not Reader.ParseArticle(uri, string): its second argument is a User-Agent, and it downloads the address itself, past the address guard and the proxy.
-        // The Reader(uri, document) constructor works on the tree we parsed and makes no request.
-        var article = new SmartReader.Reader(url.ToString(), document).GetArticle();
-        if (article.IsReadable && !string.IsNullOrWhiteSpace(article.Content))
+        var (readable, articleTitle, content) = readArticle(url, document);
+
+        // A second line of defence: an article far longer than the page it came from means the serialiser multiplied something (cloned elements, say). ReverseMarkdown
+        // is not run on it.
+        if (content.Length > (2L * html.Length) + 100_000)
+        {
+            throw new ServiceFailedException(DisplayName, "the page could not be parsed");
+        }
+
+        if (readable && !string.IsNullOrWhiteSpace(content))
         {
             var markdown = new Converter(new Config
             {
@@ -275,11 +284,19 @@ internal sealed class BuiltinReader : IPageReader
                 Tags = { Unknown = Config.UnknownTagsOption.Bypass },
                 Formatting = { RemoveComments = true },
                 Links = { SmartHref = true },
-            }).Convert(article.Content);
-            return (string.IsNullOrWhiteSpace(article.Title) ? url.Host : article.Title.Trim(), markdown);
+            }).Convert(content);
+            return (string.IsNullOrWhiteSpace(articleTitle) ? url.Host : articleTitle.Trim(), markdown);
         }
 
         return (string.IsNullOrWhiteSpace(pageTitle) ? url.Host : pageTitle.Trim(), text);
+    }
+
+    private static (bool Readable, string Title, string Content) ReadArticleWithSmartReader(Uri url, AngleSharp.Html.Dom.IHtmlDocument document)
+    {
+        // Not Reader.ParseArticle(uri, string): its second argument is a User-Agent, and it downloads the address itself, past the address guard and the proxy.
+        // The Reader(uri, document) constructor works on the tree we parsed and makes no request.
+        var article = new SmartReader.Reader(url.ToString(), document).GetArticle();
+        return (article.IsReadable, article.Title ?? string.Empty, article.Content ?? string.Empty);
     }
 
     private static bool LooksLikeChallenge(string body) =>

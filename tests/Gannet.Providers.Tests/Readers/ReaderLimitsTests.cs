@@ -188,6 +188,63 @@ public class ReaderLimitsTests
         }
     }
 
+    // SmartReader writes an attribute value out once per clone when it serialises the article. One <b title> holding a 1 MB value, then "</p><p>x" rounds, peaked
+    // at 3 GB over 1,000 rounds, inside every other limit. So the walk adds up attribute name and value lengths over every element, clones included, and refuses
+    // past 5,000,000. Scaled down here: a 100 KB value over 60 rounds is about 6.1 million.
+    [Fact]
+    public async Task A_big_attribute_value_copied_onto_clones_is_refused_fast()
+    {
+        var html = "<html><body><p><b title=\"" + new string('v', 100_000) + "\">x</p>" + Rep("<p>x", 60);
+        var started = Stopwatch.StartNew();
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+
+        Assert.Equal(TooManyAttributes, error.Message);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
+    }
+
+    // One attribute "a" (name 1, value L) on one div: the total is L + 1, so the limit falls between 4,999,999 and 5,000,000 characters of value. Parsed only.
+    [Theory]
+    [InlineData(4_999_999, true)]
+    [InlineData(5_000_000, false)]
+    public void The_attribute_text_limit_is_five_million_characters(int valueLength, bool passes)
+    {
+        var html = "<html><head></head><body><div a=\"" + new string('v', valueLength) + "\">x</div>";
+
+        if (passes)
+        {
+            Assert.NotNull(PageParser.Parse(html, "Built-in reader"));
+        }
+        else
+        {
+            var error = Assert.Throws<ServiceFailedException>(() => PageParser.Parse(html, "Built-in reader"));
+            Assert.Equal(TooManyAttributes, error.Message);
+        }
+    }
+
+    // Second line of defence: if the article SmartReader hands back is far longer than the page it came from, ReverseMarkdown is not run on it.
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public async Task An_article_far_longer_than_the_page_is_not_converted(int extra, bool passes)
+    {
+        const string page = "<html><head><title>T</title></head><body><p>short page</p></body></html>";
+        var content = "<p>" + new string('x', (2 * page.Length) + 100_000 - 7 + extra) + "</p>";
+        Assert.Equal((2 * page.Length) + 100_000 + extra, content.Length);
+        var reader = new BuiltinReader(new StubHttpHandler(_ => StubHttpHandler.Text(page)).Client(), false, PublicDns, null, new SemaphoreSlim(1), null, null, false, (_, _) => (true, "Title", content));
+
+        if (passes)
+        {
+            var result = await Read(reader);
+            Assert.StartsWith("xxx", result.Markdown, StringComparison.Ordinal);
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
+            Assert.Equal("the page could not be parsed", error.Message);
+        }
+    }
+
     // Text under deep nesting is very slow in SmartReader: 250 divs and one 4 MB paragraph ran for over 600 seconds, and 120 nested list levels in 197 KB took 67 seconds.
     // So the walk also adds up, for every text node, its length times its depth, and refuses past 20,000,000. Real pages: Wikipedia Gannet 481,663, Bird 3,448,386.
     [Fact]
