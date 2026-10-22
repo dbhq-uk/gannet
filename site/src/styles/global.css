@@ -119,6 +119,7 @@ p { color: var(--text-2); text-wrap: pretty; }
 .band-sea p, .band-sea li { color: var(--sea-text); }
 .band-sea .mono-label { color: color-mix(in srgb, var(--sea-text) 74%, var(--sea)); }
 .band-sea code { background: rgba(255,255,255,.1); color: var(--surface); }
+.band-sea .out-glyph { color: inherit; }
 
 .crumb { font-size: .9rem; margin-bottom: clamp(20px, 2.6vw, 28px); }
 .crumb a { color: var(--text-3); font-weight: 500; }
@@ -191,6 +192,13 @@ p { color: var(--text-2); text-wrap: pretty; }
 .tbl td { color: var(--text-2); line-height: 1.55; }
 .tbl td:first-child { color: var(--text); font-weight: 500; }
 .tbl code { font-family: var(--font-mono); font-size: .86rem; color: var(--text); }
+.tbl .nowrap { white-space: nowrap; }
+.tbl-wrap.wide .tbl { min-width: 960px; }
+/* The first column names the row, so it stays put while the rest scrolls. */
+.tbl th:first-child, .tbl td:first-child { position: sticky; left: 0; background: var(--surface); }
+/* On a phone a table scrolls sideways; the fade says there is more. */
+@media (max-width: 900px) { .tbl-wrap { -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent); mask-image: linear-gradient(90deg, #000 90%, transparent); } }
+.prose a { overflow-wrap: anywhere; }
 .prose .tbl-wrap { max-width: none; }
 
 /* A wide table may break out of the 68ch measure on desktop. */

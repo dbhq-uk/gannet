@@ -229,7 +229,7 @@ It is the research idea that people accept a message more or less readily depend
 
 ## Sources
 
-All pages were read on 21 October 2026. Copies of the text relied on are saved in `site/drafts/research/source-credibility/`.
+All pages were read on 21 October 2026.
 
 - Meriam Library, California State University, Chico. "Evaluating Information - Applying the CRAAP Test". https://library.csuchico.edu/sites/default/files/craap-test.pdf
 - Blakeslee, S. (2004). "The CRAAP Test". LOEX Quarterly 31(3). https://commons.emich.edu/loexquarterly/vol31/iss3/4

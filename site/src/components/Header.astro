@@ -74,5 +74,10 @@ const onIndex = path === "/" || path === "";
     .hd-nav::-webkit-scrollbar { display: none; }
     .hd-link { padding: 6px 10px; font-size: .9rem; }
   }
+  /* Under 560px the four guides sit two by two, so none is cut off. */
+  @media (max-width: 560px) {
+    .hd-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; overflow: visible; }
+    .hd-link { padding: 6px 8px; white-space: normal; }
+  }
   @media (max-width: 420px) { .hd-gh-label { display: none; } .hd-gh { padding: 0 10px; } }
 </style>
