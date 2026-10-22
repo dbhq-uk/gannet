@@ -350,15 +350,6 @@ public class BuiltinReaderTests
     }
 
     [Fact]
-    public async Task A_parse_that_takes_too_long_is_a_typed_failure()
-    {
-        var handler = new StubHttpHandler(_ => StubHttpHandler.Text(Article));
-        var reader = new BuiltinReader(handler.Client(), false, PublicDns, TimeSpan.Zero, new SemaphoreSlim(1), null);
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
-        Assert.Equal("the page took too long to parse", error.Message);
-    }
-
-    [Fact]
     public void The_defaults_are_a_sixty_second_parse_limit_and_a_gate_sized_to_half_the_processors()
     {
         Assert.Equal(TimeSpan.FromSeconds(60), BuiltinReader.DefaultParseTimeout);

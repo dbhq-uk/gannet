@@ -18,7 +18,7 @@ internal static class OpenRouterModelInfo
     /// The window and tools OpenRouter reports for <paramref name="model"/>, or null when the call fails for any reason or the model is not listed. Only the caller's own
     /// cancellation escapes. The key goes as a bearer header to the endpoint it belongs to, never into a URL or a message.
     /// </summary>
-    public static async Task<(int? ContextWindow, bool SupportsTools)?> ReadAsync(HttpClient http, Uri endpoint, string model, string apiKey, CancellationToken ct)
+    public static async Task<(int? ContextWindow, bool SupportsTools)?> ReadAsync(HttpClient http, Uri endpoint, string model, string apiKey, CancellationToken ct, TimeSpan? bodyDeadline = null)
     {
         ct.ThrowIfCancellationRequested();
         try
@@ -33,7 +33,7 @@ internal static class OpenRouterModelInfo
             }
 
             // The whole catalogue is one response, so the default 16 MB cap and 30 s body deadline apply; nothing in the docs asks for more.
-            using var json = await JsonRead.ParseAsync(response, Service, ct);
+            using var json = await JsonRead.ParseAsync(response, Service, ct, bodyDeadline);
             foreach (var entry in json.RootElement.Prop("data").Items())
             {
                 if (string.Equals(entry.Str("id"), model, StringComparison.Ordinal))

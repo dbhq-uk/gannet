@@ -3,6 +3,7 @@ using System.Text.Json;
 using Gannet.Core.Configuration;
 using Gannet.Core.Models;
 using Gannet.Core.Services;
+using Gannet.Providers.Http;
 using Gannet.Providers.Models;
 using Gannet.TestSupport;
 using Microsoft.Extensions.AI;
@@ -323,6 +324,96 @@ public class OpenRouterDeepSeekTests
         var factory = Factory(OpenRouter("gpt-5.5"), Routed());
 
         Assert.Equal(new ModelCapabilities(8192, false), (await factory.GetAsync("or", CancellationToken.None)).Capabilities);
+    }
+
+    [Fact]
+    public async Task A_body_over_the_cap_falls_back()
+    {
+        var handler = Routed(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new RepeatingStream(JsonRead.MaxBodyBytes + 1024)) });
+
+        var handle = await Factory(OpenRouter(), handler).GetAsync("or", CancellationToken.None);
+
+        Assert.Equal(new ModelCapabilities(8192, false), handle.Capabilities);
+    }
+
+    [Fact]
+    public async Task A_body_that_stalls_after_the_headers_gives_null_at_the_deadline_not_at_the_callers_patience()
+    {
+        var handler = Routed(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StallingStream()) });
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = await OpenRouterModelInfo.ReadAsync(handler.Client(), new Uri("https://openrouter.ai/api/v1"), "acme/big", Secret, CancellationToken.None, TimeSpan.FromMilliseconds(200));
+
+        Assert.Null(result);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"took {started.Elapsed}");
+    }
+
+    private sealed class RepeatingStream(long length) : Stream
+    {
+        private long position;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => position; set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            var n = (int)Math.Min(buffer.Length, length - position);
+            buffer[..n].Fill((byte)' ');
+            position += n;
+            return n;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromResult(Read(buffer.Span));
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private sealed class StallingStream : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     [Fact]
