@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text;
-using AngleSharp.Html.Parser;
 using Gannet.Core.Services;
 using Gannet.Providers.Http;
 using ReverseMarkdown;
@@ -32,6 +31,7 @@ internal sealed class BuiltinReader : IPageReader
     private readonly Func<string, CancellationToken, Task<IPAddress[]>> resolve;
     private readonly TimeSpan parseTimeout;
     private readonly TimeSpan downloadTimeout;
+    private readonly bool skipPrefilter;
     private readonly SemaphoreSlim gate;
     private readonly Func<Uri, string, (string Title, string Markdown)> parse;
 
@@ -50,13 +50,15 @@ internal sealed class BuiltinReader : IPageReader
         TimeSpan? parseTimeout,
         SemaphoreSlim? gate = null,
         Func<Uri, string, (string Title, string Markdown)>? parse = null,
-        TimeSpan? downloadTimeout = null)
+        TimeSpan? downloadTimeout = null,
+        bool skipPrefilter = false)
     {
         this.http = http;
         this.allowPrivateAddresses = allowPrivateAddresses;
         this.resolve = resolve;
         this.parseTimeout = parseTimeout ?? DefaultParseTimeout;
         this.downloadTimeout = downloadTimeout ?? DefaultDownloadTimeout;
+        this.skipPrefilter = skipPrefilter;
         this.gate = gate ?? DefaultGate;
         this.parse = parse ?? Extract;
     }
@@ -181,7 +183,9 @@ internal sealed class BuiltinReader : IPageReader
 
     private async Task<(string Title, string Markdown)> ExtractAsync(Uri url, string html, CancellationToken ct)
     {
-        switch (HtmlDepth.Scan(html))
+        // A fast pre-filter: it refuses the obvious hostile shapes in milliseconds. It is not the guard. The exact limits are in PageParser.
+        var scan = skipPrefilter ? HtmlScan.Ok : HtmlDepth.Scan(html);
+        switch (scan)
         {
             case HtmlScan.TooDeep:
                 throw new ServiceFailedException(DisplayName, "the page is too deeply nested to read");
@@ -227,8 +231,9 @@ internal sealed class BuiltinReader : IPageReader
         {
             result = parse(url, html);
         }
-        catch (OperationCanceledException e)
+        catch (Exception e) when (e is OperationCanceledException or ServiceFailedException)
         {
+            // Our own typed refusals (too many elements, too deep) and cancellation pass through as they are.
             failure = e;
         }
         catch (Exception)
@@ -251,11 +256,17 @@ internal sealed class BuiltinReader : IPageReader
         }
     }
 
-    private static (string Title, string Markdown) Extract(Uri url, string html)
+    private (string Title, string Markdown) Extract(Uri url, string html)
     {
+        // Parsed once, here, with the limits applied by the parser (PageParser). SmartReader gets the parsed document and never parses hostile HTML itself.
+        var document = PageParser.Parse(html, DisplayName);
+
+        // Read the fallback text first: SmartReader rewrites the tree it is given.
+        var (text, pageTitle) = PageParser.PlainText(document);
+
         // Not Reader.ParseArticle(uri, string): its second argument is a User-Agent, and it downloads the address itself, past the address guard and the proxy.
-        // The Reader(uri, text) constructor parses the text we fetched and makes no request.
-        var article = new SmartReader.Reader(url.ToString(), html).GetArticle();
+        // The Reader(uri, document) constructor works on the tree we parsed and makes no request.
+        var article = new SmartReader.Reader(url.ToString(), document).GetArticle();
         if (article.IsReadable && !string.IsNullOrWhiteSpace(article.Content))
         {
             var markdown = new Converter(new Config
@@ -268,28 +279,13 @@ internal sealed class BuiltinReader : IPageReader
             return (string.IsNullOrWhiteSpace(article.Title) ? url.Host : article.Title.Trim(), markdown);
         }
 
-        var (text, title) = PlainText(html);
-        return (string.IsNullOrWhiteSpace(title) ? url.Host : title.Trim(), text);
+        return (string.IsNullOrWhiteSpace(pageTitle) ? url.Host : pageTitle.Trim(), text);
     }
 
     private static bool LooksLikeChallenge(string body) =>
         body.Contains("<title>Just a moment...</title>", StringComparison.OrdinalIgnoreCase)
         || body.Contains("Attention Required! | Cloudflare", StringComparison.OrdinalIgnoreCase)
         || body.Contains("cf-browser-verification", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>The fallback for a page the readability parser gives up on: the body text without scripts, menus and footers, and the page title.</summary>
-    private static (string Text, string Title) PlainText(string html)
-    {
-        var document = new HtmlParser().ParseDocument(html);
-        var title = document.Title ?? string.Empty;
-        foreach (var element in document.QuerySelectorAll("script, style, nav, header, footer, noscript, textarea, template").ToList())
-        {
-            element.Remove();
-        }
-
-        var text = document.Body?.TextContent ?? string.Empty;
-        return (string.Join("\n\n", text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0)), title);
-    }
 
     /// <summary>Reads at most <see cref="MaxBytes"/>; anything after that is left unread.</summary>
     private static async Task<string> ReadCappedAsync(HttpResponseMessage response, CancellationToken ct)
