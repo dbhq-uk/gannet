@@ -17,6 +17,16 @@ internal static class PageParser
 {
     private const string TooManyElements = "the page has too many elements to read";
     private const string TooDeep = "the page is too deeply nested to read";
+    private const string TooManyAttributes = "the page has an element with too many attributes";
+
+    /// <summary>The most attributes one element may have. The busiest real page measured has 14.</summary>
+    public const int MaxAttributes = 32;
+
+    /// <summary>
+    /// The most the depths of all the elements may add up to. SmartReader's time grows with that sum, not with the depth or the count alone: 250 divs and then
+    /// 29,000 closed spans (inside both other limits) held a parse slot for 762 seconds. Real pages: Wikipedia Gannet 38,051, Bird 351,507.
+    /// </summary>
+    public const long MaxDepthSum = 1_000_000;
 
     // While parsing, the tree is probed every so many created elements: its real element count (clones do not reach the callback) and its depth, so a page that
     // nests deeply or clones heavily is stopped long before the parser has built a huge tree. The overshoot is at most ProbeEvery times the number of open
@@ -46,6 +56,13 @@ internal static class PageParser
                     throw new LimitException(TooManyElements);
                 }
 
+                // The callback fires before the element's attributes are set, so the element before this one is the newest whose attributes are known. Checking it here
+                // means a clone only ever copies attributes that have passed (a formatting element with 10,000 attributes, cloned 2,000 times, peaked at 2.5 GB).
+                if (previous is not null && previous.Attributes.Length > MaxAttributes)
+                {
+                    throw new LimitException(TooManyAttributes);
+                }
+
                 if (count % ProbeEvery == 0)
                 {
                     if (element.Owner is { } owner && owner.All.Length > HtmlDepth.MaxElements)
@@ -72,7 +89,13 @@ internal static class PageParser
                 throw new LimitException(TooManyElements);
             }
 
-            if (Depth(document) > HtmlDepth.MaxDepth)
+            // The last element created has not been checked by a later callback.
+            if (previous is not null && previous.Attributes.Length > MaxAttributes)
+            {
+                throw new LimitException(TooManyAttributes);
+            }
+
+            if (TooNested(document))
             {
                 throw new LimitException(TooDeep);
             }
@@ -133,27 +156,33 @@ internal static class PageParser
         return depth;
     }
 
-    /// <summary>The depth of the deepest element, with the root element at 1. An explicit stack, so a deep tree cannot overflow this walk.</summary>
-    private static int Depth(IHtmlDocument document)
+    /// <summary>
+    /// Refuses a tree whose deepest element is past <see cref="HtmlDepth.MaxDepth"/> or whose depths add up to more than <see cref="MaxDepthSum"/>. The root element
+    /// is at depth 1. An explicit stack, so a deep tree cannot overflow this walk.
+    /// </summary>
+    private static bool TooNested(IHtmlDocument document)
     {
         if (document.DocumentElement is not { } root)
         {
-            return 0;
+            return false;
         }
 
         var deepest = 0;
+        long sum = 0;
         var pending = new Stack<(IElement Element, int Depth)>();
         pending.Push((root, 1));
         while (pending.Count > 0)
         {
             var (element, depth) = pending.Pop();
+            sum += depth;
             if (depth > deepest)
             {
                 deepest = depth;
-                if (deepest > HtmlDepth.MaxDepth)
-                {
-                    return deepest;
-                }
+            }
+
+            if (deepest > HtmlDepth.MaxDepth || sum > MaxDepthSum)
+            {
+                return true;
             }
 
             foreach (var child in element.Children)
@@ -171,6 +200,6 @@ internal static class PageParser
             }
         }
 
-        return deepest;
+        return false;
     }
 }

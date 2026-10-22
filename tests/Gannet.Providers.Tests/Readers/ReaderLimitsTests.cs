@@ -108,6 +108,81 @@ public class ReaderLimitsTests
         Assert.Equal(TooDeep, error.Message);
     }
 
+    private const string TooManyAttributes = "the page has an element with too many attributes";
+
+    private static string Attributes(int count) => string.Concat(Enumerable.Range(0, count).Select(i => $" a{i}=1"));
+
+    // One formatting element with 10,000 attributes, closed by "</p>" so that it stays in the list of active formatting elements, then "<p>x" repeated. The parser
+    // copies the attributes onto a clone each time (the creation callback fires before attributes are set), so 2,000 repeats of a 71 KB page peaked at 2.5 GB.
+    // Scaled down here: 30 repeats.
+    [Fact]
+    public async Task One_formatting_element_with_thousands_of_attributes_is_refused_before_it_is_cloned()
+    {
+        var html = "<html><body><p><b" + Attributes(10_000) + ">x</p>" + Rep("<p>x", 30);
+        var started = Stopwatch.StartNew();
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+
+        Assert.Equal(TooManyAttributes, error.Message);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
+    }
+
+    [Theory]
+    [InlineData(32, true)]
+    [InlineData(33, false)]
+    public async Task An_element_may_have_32_attributes_and_not_33_whether_or_not_more_elements_follow(int attributes, bool passes)
+    {
+        foreach (var html in new[] { "<html><body><div" + Attributes(attributes) + ">x</div><p>after</p>", "<html><body><div" + Attributes(attributes) + ">" })
+        {
+            var reader = Unfiltered(html);
+            if (passes)
+            {
+                await Read(reader);
+            }
+            else
+            {
+                var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
+                Assert.Equal(TooManyAttributes, error.Message);
+            }
+        }
+    }
+
+    // Pages inside both limits can still cost SmartReader minutes: its time grows with the sum of the element depths. 250 divs then 29,000 closed spans is 29,255
+    // elements, depth 252, and a depth sum over seven million.
+    [Fact]
+    public async Task A_page_inside_both_limits_but_with_a_huge_total_nesting_is_refused()
+    {
+        var html = "<html><body>" + Rep("<div>", 250) + Rep("<span></span>", 29_000);
+        var started = Stopwatch.StartNew();
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+
+        Assert.Equal(TooDeep, error.Message);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
+    }
+
+    // 100 nested divs, then leaves at depth 103. The depth sum is 5,255 + 103 per leaf, so the limit of 1,000,000 falls between two leaf counts.
+    [Theory]
+    [InlineData(9_657, true)]
+    [InlineData(9_658, false)]
+    public async Task The_total_nesting_limit_is_one_million(int leaves, bool passes)
+    {
+        const int Base = 5 + (2 * 100) + (100 * 101 / 2);
+        Assert.True(Base + (103L * 9_657) <= 1_000_000 && Base + (103L * 9_658) > 1_000_000);
+        var html = "<html><head></head><body>" + Rep("<div>", 100) + Rep("<br>", leaves);
+        var reader = Unfiltered(html);
+
+        if (passes)
+        {
+            await Read(reader);
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
+            Assert.Equal(TooDeep, error.Message);
+        }
+    }
+
     // The reviewer's size. Unchecked, this builds about 1.16 million elements and uses hundreds of megabytes.
     [Fact]
     public async Task The_formatting_clone_shape_at_29000_repeats_is_stopped_early()
