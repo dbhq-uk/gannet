@@ -307,6 +307,131 @@ public class ModelErrorTests
         Assert.Equal("Gemini timed out.", error.Message);
     }
 
+    // The response ends part-way: one chunk arrives, then the connection drops.
+    private sealed class ChunkThenIoErrorStream(string firstChunk) : Stream
+    {
+        private readonly byte[] chunk = System.Text.Encoding.UTF8.GetBytes(firstChunk);
+        private bool sent;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            if (sent)
+            {
+                throw new IOException($"connection reset while reading {Secret}");
+            }
+
+            sent = true;
+            chunk.CopyTo(buffer);
+            return chunk.Length;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromResult(Read(buffer.Span));
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private const string OpenAiChunk = """
+        data: {"id":"c1","object":"chat.completion.chunk","created":1761120000,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"par"},"finish_reason":null}]}
+
+
+        """;
+
+    private const string AnthropicChunks = """
+        event: message_start
+        data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"m","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}
+
+        event: content_block_start
+        data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+        event: content_block_delta
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"par"}}
+
+
+        """;
+
+    [Theory]
+    [InlineData("OpenAI", OpenAiChunk)]
+    [InlineData("Anthropic", AnthropicChunks)]
+    public async Task A_connection_lost_part_way_through_a_real_sdk_stream_is_could_not_be_reached(string provider, string firstChunk)
+    {
+        var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new ChunkThenIoErrorStream(firstChunk)) { Headers = { ContentType = new("text/event-stream") } },
+        });
+        var factory = new ChatClientFactory(
+            Options.Create(new GannetOptions
+            {
+                Models = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["m1"] = new ModelOptions { Provider = provider, Model = provider == "Anthropic" ? "claude-sonnet-5-5" : "some-model", ApiKey = "k" },
+                },
+            }),
+            new StubClientFactory(handler));
+        var client = (await factory.GetAsync("m1", CancellationToken.None)).Client;
+        var seen = 0;
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(async () =>
+        {
+            await foreach (var _ in client.GetStreamingResponseAsync("hi"))
+            {
+                seen++;
+            }
+        });
+
+        Assert.True(seen >= 1, "an update should have arrived before the connection dropped");
+        Assert.Equal($"{provider} could not be reached.", error.Message);
+        AssertClean(error);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task An_io_exception_and_its_http_form_are_could_not_be_reached(bool http)
+    {
+        var client = new TypedErrorChatClient(
+            new ThrowingClient(() => http ? new HttpIOException(HttpRequestError.ResponseEnded, $"ended {Secret}") : new IOException($"reset {Secret}"), midStream: true),
+            "Anthropic",
+            "m1");
+
+        var error = Assert.IsType<ServiceFailedException>(await FailAsync(client, stream: true));
+
+        Assert.Equal("Anthropic could not be reached.", error.Message);
+        AssertClean(error);
+    }
+
+    [Fact]
+    public async Task An_io_exception_while_the_caller_is_cancelled_passes_through_untouched()
+    {
+        using var cts = new CancellationTokenSource();
+        var failure = new IOException("aborted by the caller");
+        var client = new TypedErrorChatClient(new ThrowingClient(() => failure), "Anthropic", "m1");
+        await cts.CancelAsync();
+
+        var thrown = await Assert.ThrowsAsync<IOException>(() => client.GetResponseAsync("hi", cancellationToken: cts.Token));
+
+        Assert.Same(failure, thrown);
+    }
+
     [Fact]
     public async Task The_callers_own_cancellation_still_escapes_as_cancellation()
     {

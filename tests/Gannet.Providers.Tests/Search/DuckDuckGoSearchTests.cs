@@ -39,6 +39,23 @@ public class DuckDuckGoSearchTests
     }
 
     [Fact]
+    public async Task Titles_are_one_line_of_at_most_300_characters_and_snippets_at_most_2000()
+    {
+        var title = "First line\r\n\tsecond line\nthird " + new string('t', 500);
+        var snippet = string.Join(' ', Enumerable.Repeat("gannet", 1000));
+        var page = $"""<html><body><div class="result"><a class="result__a" href="https://t.example/">{title}</a><a class="result__snippet">{snippet}</a></div></body></html>""";
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Text(page));
+
+        var hit = Assert.Single(await Create(handler).SearchAsync("q", 5, CancellationToken.None));
+
+        Assert.StartsWith("First line second line third ", hit.Title, StringComparison.Ordinal);
+        Assert.InRange(hit.Title.Length, 1, 300);
+        Assert.DoesNotContain('\n', hit.Title);
+        Assert.DoesNotContain('\t', hit.Title);
+        Assert.InRange(hit.Snippet.Length, 1, 2000);
+    }
+
+    [Fact]
     public async Task Posts_the_query_as_a_form_to_the_html_endpoint()
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text(Page));

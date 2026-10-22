@@ -113,7 +113,7 @@ internal sealed class DuckDuckGoSearch : SearchProviderBase
         return hits;
     }
 
-    private static List<SearchHit> Parse(string html, int maxResults)
+    private static IReadOnlyList<SearchHit> Parse(string html, int maxResults)
     {
         var document = new HtmlParser().ParseDocument(html);
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -139,7 +139,8 @@ internal sealed class DuckDuckGoSearch : SearchProviderBase
             }
         }
 
-        return hits;
+        // The shared step bounds a title to one line of 300 characters and a snippet to 2,000, like every other search service.
+        return Take(hits, maxResults);
     }
 
     private static Uri? Unwrap(string? href)

@@ -88,6 +88,12 @@ internal sealed class TypedErrorChatClient(IChatClient inner, string provider, s
                 return g.StatusCode > 0 ? FromStatus(g.StatusCode, null) : Unreachable();
             case HttpRequestException h:
                 return h.StatusCode is { } status ? FromStatus((int)status, null) : Unreachable();
+
+            // A connection lost part-way through a response (HttpIOException is one). When the caller cancelled, the IOException is a side effect of that and is theirs.
+            case IOException when ct.IsCancellationRequested:
+                return null;
+            case IOException:
+                return Unreachable();
             case OllamaException:
                 return new ServiceFailedException(provider, $"{provider} returned an error.");
             default:
