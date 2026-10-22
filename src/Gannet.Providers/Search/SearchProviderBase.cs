@@ -13,6 +13,9 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
 
     protected ServiceOptions Options { get; } = options;
 
+    /// <summary>How long a response body may take to arrive. Tests shorten it.</summary>
+    internal TimeSpan BodyDeadline { get; init; } = JsonRead.DefaultBodyDeadline;
+
     public string Name { get; } = name;
 
     public abstract string Type { get; }
@@ -55,7 +58,7 @@ internal abstract class SearchProviderBase(HttpClient http, string name, Service
         using (request)
         {
             using var response = await ServiceHttp.SendCheckedAsync(Http, request, DisplayName, IsQuotaResponseAsync, ct);
-            return await JsonRead.ParseAsync(response, DisplayName, ct);
+            return await JsonRead.ParseAsync(response, DisplayName, ct, BodyDeadline);
         }
     }
 

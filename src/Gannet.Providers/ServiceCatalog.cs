@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Gannet.Core.Configuration;
 using Gannet.Core.Models;
 using Gannet.Core.Services;
@@ -102,6 +103,11 @@ internal sealed class ServiceCatalog : IServiceCatalog
 
     public async Task<ServiceCheckResult> CheckAsync(string kind, string name, CancellationToken ct)
     {
+        if (kind is not ("search" or "reader" or "model"))
+        {
+            throw new ArgumentException($"Unknown kind '{kind}'.", nameof(kind));
+        }
+
         try
         {
             switch (kind)
@@ -117,7 +123,7 @@ internal sealed class ServiceCatalog : IServiceCatalog
                     var mode = model.Capabilities.CanRunAgentMode ? "agent" : "fixed";
                     return new ServiceCheckResult(true, $"Reachable. Context {model.Capabilities.ContextWindow:N0} tokens; tools {(model.Capabilities.SupportsTools ? "yes" : "no")}; {mode} mode.");
                 default:
-                    throw new ArgumentException($"Unknown kind '{kind}'.", nameof(kind));
+                    throw new UnreachableException();
             }
         }
         catch (ServiceException e)
@@ -127,6 +133,15 @@ internal sealed class ServiceCatalog : IServiceCatalog
         catch (HttpRequestException e)
         {
             return new ServiceCheckResult(false, $"Could not connect ({e.HttpRequestError}).");
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new ServiceCheckResult(false, "Timed out.");
+        }
+        catch (Exception e) when (e is not (OperationCanceledException or ArgumentException))
+        {
+            // A bug in a provider is a failed check, not a crash. Only the type name is shown: the message can carry server text.
+            return new ServiceCheckResult(false, $"The check failed unexpectedly ({e.GetType().Name}).");
         }
     }
 

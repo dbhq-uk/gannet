@@ -226,7 +226,7 @@ public class ServiceCatalogTests
                 s.Configure<HttpStandardResilienceOptions>("gannet-search-tavily-standard", o => o.AttemptTimeout.Timeout = TimeSpan.FromMilliseconds(200));
             });
 
-        await Assert.ThrowsAnyAsync<Exception>(() => provider.GetRequiredService<IServiceCatalog>().GetSearch("tavily").SearchAsync("q", 3, CancellationToken.None));
+        await Assert.ThrowsAsync<ServiceFailedException>(() => provider.GetRequiredService<IServiceCatalog>().GetSearch("tavily").SearchAsync("q", 3, CancellationToken.None));
 
         Assert.Equal(1, handler.Count);
     }
@@ -286,5 +286,47 @@ public class ServiceCatalogTests
         await Assert.ThrowsAnyAsync<Exception>(() => reader.ReadAsync(new Uri("https://93.184.216.34/a"), 500, CancellationToken.None));
 
         Assert.Equal(1, handler.Count);
+    }
+
+    [Fact]
+    public async Task Check_reports_an_unexpected_exception_by_type_name_only()
+    {
+        var handler = new CountingHandler((_, _, _) => throw new InvalidOperationException("SECRET-SERVER-TEXT"));
+        using var provider = BuildProvider(new() { ["Gannet:Search:tavily:ApiKey"] = "k" }, Stub("gannet-search-tavily", handler));
+
+        var result = await provider.GetRequiredService<IServiceCatalog>().CheckAsync("search", "tavily", CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Contains(nameof(InvalidOperationException), result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Check_reports_a_timeout_that_is_not_the_callers_as_a_failed_check()
+    {
+        var handler = new CountingHandler((_, _, _) => throw new TaskCanceledException("timed out"));
+        using var provider = BuildProvider(new() { ["Gannet:Search:tavily:ApiKey"] = "k" }, Stub("gannet-search-tavily", handler));
+
+        var result = await provider.GetRequiredService<IServiceCatalog>().CheckAsync("search", "tavily", CancellationToken.None);
+
+        Assert.Equal(new ServiceCheckResult(false, "Timed out."), result);
+    }
+
+    [Fact]
+    public async Task Check_does_not_swallow_the_callers_cancellation()
+    {
+        var handler = new CountingHandler((_, _, ct) => throw new OperationCanceledException(ct));
+        using var provider = BuildProvider(new() { ["Gannet:Search:tavily:ApiKey"] = "k" }, Stub("gannet-search-tavily", handler));
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.GetRequiredService<IServiceCatalog>().CheckAsync("search", "tavily", cts.Token));
+    }
+
+    [Fact]
+    public async Task Check_still_rejects_an_unknown_kind_as_a_programming_error()
+    {
+        using var provider = BuildProvider([]);
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.GetRequiredService<IServiceCatalog>().CheckAsync("nope", "x", CancellationToken.None));
     }
 }
