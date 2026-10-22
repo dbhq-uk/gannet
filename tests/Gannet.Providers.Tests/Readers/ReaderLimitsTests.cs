@@ -147,6 +147,93 @@ public class ReaderLimitsTests
         }
     }
 
+    private static string AttributesFrom(int start, int count) => string.Concat(Enumerable.Range(start, count).Select(i => $" a{i}=1"));
+
+    // A stray <html> or <body> tag merges its attributes onto the existing element and creates no element, so the per-element check on created elements never sees it.
+    // Merging gets slower as the list grows: 3,000 rounds of 32 new attributes (838 KB) took 146 seconds. Scaled down here: 100 rounds.
+    [Theory]
+    [InlineData("html")]
+    [InlineData("body")]
+    public async Task Stray_tags_that_keep_merging_attributes_are_refused(string tag)
+    {
+        // A <div> comes first, so the newest created element is not the one being merged into.
+        var html = "<html><body><div></div>" + string.Concat(Enumerable.Range(0, 100).Select(r => $"<{tag}{AttributesFrom(r * 32, 32)}>"));
+        var started = Stopwatch.StartNew();
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+
+        Assert.Equal(TooManyAttributes, error.Message);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
+    }
+
+    // The error handler fires before the tag is merged, so one stray tag can bring the element to 32 or past it, and the next tag (or the check after the parse) refuses.
+    [Theory]
+    [InlineData("html", 32, true)]
+    [InlineData("html", 33, false)]
+    [InlineData("body", 32, true)]
+    [InlineData("body", 33, false)]
+    public async Task A_single_stray_tag_may_bring_html_or_body_to_32_attributes_and_not_33(string tag, int attributes, bool passes)
+    {
+        var html = $"<html><body><div></div><{tag}{AttributesFrom(0, attributes)}>x";
+        var reader = Unfiltered(html);
+
+        if (passes)
+        {
+            await Read(reader);
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
+            Assert.Equal(TooManyAttributes, error.Message);
+        }
+    }
+
+    // Text under deep nesting is very slow in SmartReader: 250 divs and one 4 MB paragraph ran for over 600 seconds, and 120 nested list levels in 197 KB took 67 seconds.
+    // So the walk also adds up, for every text node, its length times its depth, and refuses past 20,000,000. Real pages: Wikipedia Gannet 481,663, Bird 3,448,386.
+    [Fact]
+    public async Task One_big_paragraph_under_250_divs_is_refused_fast()
+    {
+        var html = "<html><body>" + Rep("<div>", 250) + "<p>" + Rep("gannet ", 15_000);
+        var started = Stopwatch.StartNew();
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+
+        Assert.Equal(TooDeep, error.Message);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
+    }
+
+    [Fact]
+    public async Task One_hundred_and_twenty_nested_list_levels_with_text_are_refused_fast()
+    {
+        var level = "<ul><li>" + Rep("gannets dive from a great height into the sea ", 36);
+        var html = "<html><body>" + Rep(level, 120);
+        var started = Stopwatch.StartNew();
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Unfiltered(html)));
+
+        Assert.Equal(TooDeep, error.Message);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
+    }
+
+    // Text directly in the body is at depth 3 (html 1, body 2, the text 3), so the limit falls between 6,666,666 and 6,666,667 characters. Parsed only, not read.
+    [Theory]
+    [InlineData(6_666_666, true)]
+    [InlineData(6_666_667, false)]
+    public void The_text_times_depth_limit_is_twenty_million(int characters, bool passes)
+    {
+        var html = "<html><head></head><body>" + new string('x', characters);
+
+        if (passes)
+        {
+            Assert.NotNull(PageParser.Parse(html, "Built-in reader"));
+        }
+        else
+        {
+            var error = Assert.Throws<ServiceFailedException>(() => PageParser.Parse(html, "Built-in reader"));
+            Assert.Equal(TooDeep, error.Message);
+        }
+    }
+
     // Pages inside both limits can still cost SmartReader minutes: its time grows with the sum of the element depths. 250 divs then 29,000 closed spans is 29,255
     // elements, depth 252, and a depth sum over seven million.
     [Fact]

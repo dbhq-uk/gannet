@@ -17,7 +17,7 @@ internal static class PageParser
 {
     private const string TooManyElements = "the page has too many elements to read";
     private const string TooDeep = "the page is too deeply nested to read";
-    private const string TooManyAttributes = "the page has an element with too many attributes";
+    private const string AttributesMessage = "the page has an element with too many attributes";
 
     /// <summary>The most attributes one element may have. The busiest real page measured has 14.</summary>
     public const int MaxAttributes = 32;
@@ -27,6 +27,12 @@ internal static class PageParser
     /// 29,000 closed spans (inside both other limits) held a parse slot for 762 seconds. Real pages: Wikipedia Gannet 38,051, Bird 351,507.
     /// </summary>
     public const long MaxDepthSum = 1_000_000;
+
+    /// <summary>
+    /// The most that every text node's length times its depth may add up to. SmartReader is very slow on text that sits deep: 250 divs and one 4 MB paragraph ran
+    /// for over 600 seconds and allocated 294 GB, and 120 nested list levels in 197 KB took 67 seconds. Real pages: Wikipedia Gannet 481,663, Bird 3,448,386.
+    /// </summary>
+    public const long MaxTextDepth = 20_000_000;
 
     // While parsing, the tree is probed every so many created elements: its real element count (clones do not reach the callback) and its depth, so a page that
     // nests deeply or clones heavily is stopped long before the parser has built a huge tree. The overshoot is at most ProbeEvery times the number of open
@@ -45,6 +51,10 @@ internal static class PageParser
     {
         var count = 0;
         IElement? previous = null;
+
+        // A stray <html> or <body> tag merges its attributes onto these two and creates no element, so the check on created elements never sees it.
+        IElement? htmlElement = null;
+        IElement? bodyElement = null;
         var options = new HtmlParserOptions
         {
             DisableElementPositionTracking = true,
@@ -58,9 +68,9 @@ internal static class PageParser
 
                 // The callback fires before the element's attributes are set, so the element before this one is the newest whose attributes are known. Checking it here
                 // means a clone only ever copies attributes that have passed (a formatting element with 10,000 attributes, cloned 2,000 times, peaked at 2.5 GB).
-                if (previous is not null && previous.Attributes.Length > MaxAttributes)
+                if (TooManyAttributes(previous))
                 {
-                    throw new LimitException(TooManyAttributes);
+                    throw new LimitException(AttributesMessage);
                 }
 
                 if (count % ProbeEvery == 0)
@@ -78,21 +88,39 @@ internal static class PageParser
                 }
 
                 previous = element;
+                if (element is IHtmlHtmlElement)
+                {
+                    htmlElement = element;
+                }
+                else if (element is IHtmlBodyElement)
+                {
+                    bodyElement = element;
+                }
             },
         };
 
         try
         {
-            var document = new HtmlParser(options).ParseDocument(html);
+            // The parser reports an error for each stray html or body tag, just before it merges that tag's attributes. A handler that throws stops the parse.
+            var parser = new HtmlParser(options);
+            parser.Error += (_, _) =>
+            {
+                if (TooManyAttributes(htmlElement) || TooManyAttributes(bodyElement))
+                {
+                    throw new LimitException(AttributesMessage);
+                }
+            };
+
+            var document = parser.ParseDocument(html);
             if (document.All.Length > HtmlDepth.MaxElements)
             {
                 throw new LimitException(TooManyElements);
             }
 
-            // The last element created has not been checked by a later callback.
-            if (previous is not null && previous.Attributes.Length > MaxAttributes)
+            // The last element created has not been checked by a later callback, and the last stray tag has not been checked by a later error.
+            if (TooManyAttributes(previous) || TooManyAttributes(htmlElement) || TooManyAttributes(bodyElement))
             {
-                throw new LimitException(TooManyAttributes);
+                throw new LimitException(AttributesMessage);
             }
 
             if (TooNested(document))
@@ -141,6 +169,8 @@ internal static class PageParser
         return (string.Join("\n\n", lines), document.Title ?? string.Empty);
     }
 
+    private static bool TooManyAttributes(IElement? element) => element is not null && element.Attributes.Length > MaxAttributes;
+
     private static int DepthOf(IElement element)
     {
         var depth = 0;
@@ -157,8 +187,9 @@ internal static class PageParser
     }
 
     /// <summary>
-    /// Refuses a tree whose deepest element is past <see cref="HtmlDepth.MaxDepth"/> or whose depths add up to more than <see cref="MaxDepthSum"/>. The root element
-    /// is at depth 1. An explicit stack, so a deep tree cannot overflow this walk.
+    /// Refuses a tree whose deepest element is past <see cref="HtmlDepth.MaxDepth"/>, whose element depths add up to more than <see cref="MaxDepthSum"/>, or whose
+    /// text lengths times their depths add up to more than <see cref="MaxTextDepth"/>. The root element is at depth 1 and a text node is one deeper than its parent.
+    /// An explicit stack, so a deep tree cannot overflow this walk.
     /// </summary>
     private static bool TooNested(IHtmlDocument document)
     {
@@ -169,11 +200,28 @@ internal static class PageParser
 
         var deepest = 0;
         long sum = 0;
-        var pending = new Stack<(IElement Element, int Depth)>();
+        long textSum = 0;
+        var pending = new Stack<(INode Node, int Depth)>();
         pending.Push((root, 1));
         while (pending.Count > 0)
         {
-            var (element, depth) = pending.Pop();
+            var (node, depth) = pending.Pop();
+            if (node is IText text)
+            {
+                textSum += (long)text.Length * depth;
+                if (textSum > MaxTextDepth)
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (node is not IElement element)
+            {
+                continue;
+            }
+
             sum += depth;
             if (depth > deepest)
             {
@@ -185,15 +233,15 @@ internal static class PageParser
                 return true;
             }
 
-            foreach (var child in element.Children)
+            foreach (var child in element.ChildNodes)
             {
                 pending.Push((child, depth + 1));
             }
 
-            // A template keeps its content in a separate fragment, which Children does not reach.
+            // A template keeps its content in a separate fragment, which ChildNodes does not reach.
             if (element is IHtmlTemplateElement template)
             {
-                foreach (var child in template.Content.Children)
+                foreach (var child in template.Content.ChildNodes)
                 {
                     pending.Push((child, depth + 1));
                 }
