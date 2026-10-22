@@ -11,6 +11,8 @@ using Microsoft.Extensions.Options;
 
 namespace Gannet.Providers.Tests.Models;
 
+// Gemini clients read process-wide environment variables when they are built; the tests that build them (and the one that sets those variables) must not overlap.
+[Collection("Gemini environment")]
 public class ChatClientFactoryTests
 {
     private const string Secret = "sk-super-secret-value";
@@ -200,6 +202,33 @@ public class ChatClientFactoryTests
         Assert.Same(first, second);
         Assert.Equal(3, handler.Requests.Count);
         Assert.Equal(20000, first.Capabilities.ContextWindow);
+    }
+
+    private const string GeminiReply = """{ "candidates": [ { "content": { "role": "model", "parts": [ { "text": "hi" } ] }, "finishReason": "STOP" } ] }""";
+
+    [Theory]
+    [InlineData("GOOGLE_GENAI_USE_VERTEXAI")]
+    [InlineData("GOOGLE_GENAI_USE_ENTERPRISE")]
+    public async Task Gemini_uses_the_gemini_api_whatever_the_environment_asks_for(string variable)
+    {
+        var previous = Environment.GetEnvironmentVariable(variable);
+        Environment.SetEnvironmentVariable(variable, "true");
+        try
+        {
+            var handler = new StubHttpHandler(_ => StubHttpHandler.Json(GeminiReply));
+            var factory = Factory(new() { ["g"] = new ModelOptions { Provider = "Gemini", Model = "gemini-3.6-flash", ApiKey = Secret } }, handler);
+
+            await (await factory.GetAsync("g", CancellationToken.None)).Client.GetResponseAsync("hi");
+
+            var request = Assert.Single(handler.Requests);
+            Assert.Equal("generativelanguage.googleapis.com", request.Uri.Host);
+            Assert.Equal(Secret, request.Headers["x-goog-api-key"]);
+            Assert.DoesNotContain(Secret, request.Uri.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
     }
 
     [Fact]

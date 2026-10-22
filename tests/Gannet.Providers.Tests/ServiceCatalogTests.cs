@@ -174,6 +174,44 @@ public class ServiceCatalogTests
         Assert.IsType<Gannet.Core.Storage.LocalDiskBlobStore>(provider.GetRequiredService<Gannet.Core.Storage.IBlobStore>());
     }
 
+    [Theory]
+    [InlineData("http://proxy-user:SECRET-PROXY-PASSWORD@proxy.example:8080")]
+    [InlineData("http://proxy-user@proxy.example:8080")]
+    public void A_proxy_url_with_a_user_name_or_password_is_refused_at_start_up_without_echoing_it(string url)
+    {
+        using var provider = BuildProvider(new() { ["Gannet:Readers:Proxy:Url"] = url });
+
+        var error = Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IServiceCatalog>());
+
+        Assert.Contains("Gannet:Readers:Proxy:Username", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("proxy-user", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("proxy.example", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_proxy_url_that_is_not_an_absolute_address_is_refused_without_echoing_it()
+    {
+        using var provider = BuildProvider(new() { ["Gannet:Readers:Proxy:Url"] = "SECRET-not a url" });
+
+        var error = Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IServiceCatalog>());
+
+        Assert.DoesNotContain("SECRET", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_plain_proxy_url_with_separate_credentials_is_accepted()
+    {
+        using var provider = BuildProvider(new()
+        {
+            ["Gannet:Readers:Proxy:Url"] = "http://proxy.example:8080",
+            ["Gannet:Readers:Proxy:Username"] = "u",
+            ["Gannet:Readers:Proxy:Password"] = "p",
+        });
+
+        Assert.NotNull(provider.GetRequiredService<IServiceCatalog>());
+    }
+
     [Fact]
     public async Task The_duckduckgo_request_carries_exactly_one_user_agent()
     {

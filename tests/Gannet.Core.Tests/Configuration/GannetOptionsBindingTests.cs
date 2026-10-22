@@ -56,6 +56,26 @@ public class GannetOptionsBindingTests
     }
 
     [Fact]
+    public void Serialising_the_options_carries_no_secret()
+    {
+        var options = Bind(
+            ("Gannet:Models:m:Provider", "OpenAI"),
+            ("Gannet:Models:m:ApiKey", "SECRET-MODEL-KEY"),
+            ("Gannet:Search:tavily:ApiKey", "SECRET-SEARCH-KEY"),
+            ("Gannet:Readers:Services:jina:ApiKey", "SECRET-READER-KEY"),
+            ("Gannet:Readers:Proxy:Url", "http://proxy.example:8080"),
+            ("Gannet:Readers:Proxy:Username", "proxy-user"),
+            ("Gannet:Readers:Proxy:Password", "SECRET-PROXY-PASSWORD"),
+            ("Gannet:Storage:S3:AccessKeyId", "SECRET-ACCESS-ID"),
+            ("Gannet:Storage:S3:SecretAccessKey", "SECRET-ACCESS-KEY"));
+        Assert.Equal("SECRET-MODEL-KEY", options.Models["m"].ApiKey);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(options);
+
+        Assert.DoesNotContain("SECRET", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Readers_refuse_private_addresses_unless_allowed()
     {
         Assert.False(Bind().Readers.AllowPrivateAddresses);

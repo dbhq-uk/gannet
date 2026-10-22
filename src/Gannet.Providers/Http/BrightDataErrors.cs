@@ -8,6 +8,13 @@ internal static class BrightDataErrors
     // in the RFC 9209 Proxy-Status header, as details="<code>: ...".
     private static readonly string[] QuotaCodes = ["client_10020", "client_10100"];
 
+    /// <summary>
+    /// True when an unlock that failed says so in x-brd-error or x-brd-error-code, or in x-brd-err-code for a proxy-level error passed through. Once a request reaches the
+    /// service the outer status is 200, so these headers are the signal. Their text is never copied into a message.
+    /// </summary>
+    public static bool HasUnlockError(HttpResponseMessage response) =>
+        response.Headers.Contains("x-brd-error") || response.Headers.Contains("x-brd-error-code") || response.Headers.Contains("x-brd-err-code");
+
     public static bool HasQuotaCode(HttpResponseMessage response)
     {
         if (response.Headers.TryGetValues("x-brd-err-code", out var codes) && codes.Any(c => QuotaCodes.Contains(c.Trim(), StringComparer.OrdinalIgnoreCase)))

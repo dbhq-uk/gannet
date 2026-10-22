@@ -120,7 +120,10 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
             case "gemini":
                 {
                     // Requests go through the pooled chat HttpClient (no timeout of its own, the run's cancellation bounds a long generation).
+                    // The Gemini Developer API is chosen explicitly, so GOOGLE_GENAI_USE_VERTEXAI or GOOGLE_GENAI_USE_ENTERPRISE in the environment cannot send the key to another service.
                     var gemini = new Google.GenAI.Client(
+                        enterprise: false,
+                        vertexAI: false,
                         apiKey: RequireKey(name, model),
                         clientOptions: new Google.GenAI.Types.ClientOptions { HttpClientFactory = () => http.CreateClient(HttpClientNames.ModelChat) });
                     return (Handle(name, model, gemini.AsIChatClient(model.Model)), true);

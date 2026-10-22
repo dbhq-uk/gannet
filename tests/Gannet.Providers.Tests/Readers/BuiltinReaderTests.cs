@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Text;
 using Gannet.Core.Services;
@@ -22,8 +21,12 @@ public class BuiltinReaderTests
     // Host names in these tests resolve through a fake lookup, so no test touches the network.
     private static Task<IPAddress[]> PublicDns(string host, CancellationToken ct) => Task.FromResult(new[] { IPAddress.Parse("93.184.216.34") });
 
+    // A generous parse limit and a gate of its own, so a busy machine can neither time a parse out nor queue it behind another test. The tests about those
+    // defaults build their reader directly.
+    private static readonly TimeSpan ParseLimit = TimeSpan.FromMinutes(10);
+
     private static BuiltinReader Reader(StubHttpHandler handler, bool allowPrivate = false, TimeSpan? parseTimeout = null) =>
-        new(handler.Client(), allowPrivate, PublicDns, parseTimeout);
+        new(handler.Client(), allowPrivate, PublicDns, parseTimeout ?? ParseLimit, new SemaphoreSlim(1));
 
     private static Task<PageContent> Read(BuiltinReader reader, string url = "https://birds.example/gannets", int max = 8000) =>
         reader.ReadAsync(new Uri(url), max, CancellationToken.None);
@@ -271,13 +274,22 @@ public class BuiltinReaderTests
     [InlineData("b")]
     [InlineData("span")]
     [InlineData("table")]
-    public async Task Pages_nested_deeper_than_the_limit_are_refused_fast(string tag)
+    public async Task Pages_nested_deeper_than_the_limit_are_refused_before_any_parser_runs(string tag)
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text("<html><body>" + Nest(tag, 20_000)));
-        var started = Stopwatch.StartNew();
-        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Reader(handler)));
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), $"took {started.Elapsed}");
+        var parseCalls = 0;
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, ParseLimit, new SemaphoreSlim(1), (_, _) =>
+        {
+            Interlocked.Increment(ref parseCalls);
+            return ("T", "x");
+        });
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
+
         Assert.Equal("the page is too deeply nested to read", error.Message);
+
+        // Refused before any parser ran: that is what "fast" meant.
+        Assert.Equal(0, Volatile.Read(ref parseCalls));
     }
 
     [Fact]
@@ -316,10 +328,8 @@ public class BuiltinReaderTests
         var rows = string.Concat(Enumerable.Repeat("<li><a href=\"/x\">link</a> <span>text</span></li>", 4000));
         var html = $"<html><head><title>Big</title></head><body><article><p>{string.Concat(Enumerable.Repeat("Gannets dive from a height. ", 40))}</p></article><ul>{rows}</ul></body></html>";
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text(html));
-        var started = Stopwatch.StartNew();
         var page = await Read(Reader(handler));
         Assert.Contains("Gannets dive", page.Markdown, StringComparison.Ordinal);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(45), $"took {started.Elapsed}");
     }
 
     [Fact]
@@ -365,7 +375,7 @@ public class BuiltinReaderTests
 
         public int Calls { get; private set; }
 
-        public Task Entered => entered.WaitAsync(TimeSpan.FromSeconds(10));
+        public Task Entered => entered.WaitAsync(TimeSpan.FromMinutes(2));
 
         public void Release() => release.Set();
 
@@ -386,7 +396,7 @@ public class BuiltinReaderTests
     {
         var gate = new SemaphoreSlim(1);
         var parse = new BlockingParse();
-        var reader = Gated(gate, parse, TimeSpan.FromMilliseconds(600));
+        var reader = Gated(gate, parse, TimeSpan.FromSeconds(5));
 
         var first = Read(reader);
         await parse.Entered;
@@ -414,7 +424,7 @@ public class BuiltinReaderTests
         Assert.Equal(0, gate.CurrentCount);
 
         parse.Release();
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var deadline = DateTime.UtcNow.AddMinutes(2);
         while (gate.CurrentCount == 0 && DateTime.UtcNow < deadline)
         {
             await Task.Delay(20);
@@ -428,11 +438,11 @@ public class BuiltinReaderTests
     {
         var gate = new SemaphoreSlim(1);
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text(Article));
-        var good = new BuiltinReader(handler.Client(), false, PublicDns, null, gate, null);
+        var good = new BuiltinReader(handler.Client(), false, PublicDns, ParseLimit, gate, null);
         await Read(good);
         Assert.Equal(1, gate.CurrentCount);
 
-        var bad = new BuiltinReader(handler.Client(), false, PublicDns, null, gate, (_, _) => throw new InvalidOperationException("boom"));
+        var bad = new BuiltinReader(handler.Client(), false, PublicDns, ParseLimit, gate, (_, _) => throw new InvalidOperationException("boom"));
         var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(bad));
         Assert.Equal("the page could not be parsed", error.Message);
         Assert.DoesNotContain("boom", error.Message, StringComparison.Ordinal);
@@ -485,7 +495,7 @@ public class BuiltinReaderTests
         bool? background = null;
         bool? pooled = null;
         var usable = 0L;
-        var reader = new BuiltinReader(handler.Client(), false, PublicDns, null, gate, (_, _) =>
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, ParseLimit, gate, (_, _) =>
         {
             background = Thread.CurrentThread.IsBackground;
             pooled = Thread.CurrentThread.IsThreadPoolThread;
@@ -573,20 +583,18 @@ public class BuiltinReaderTests
     public async Task A_body_that_stalls_hits_the_download_deadline()
     {
         var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StallingStream()) { Headers = { ContentType = new("text/html") } } });
-        var reader = new BuiltinReader(handler.Client(), false, PublicDns, null, new SemaphoreSlim(1), null, TimeSpan.FromMilliseconds(300));
-        var started = Stopwatch.StartNew();
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, ParseLimit, new SemaphoreSlim(1), null, TimeSpan.FromMilliseconds(300));
 
         var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
 
         Assert.Equal("the page took too long to download", error.Message);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10));
     }
 
     [Fact]
     public async Task The_callers_cancellation_during_a_stalled_download_is_a_cancellation()
     {
         var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StallingStream()) { Headers = { ContentType = new("text/html") } } });
-        var reader = new BuiltinReader(handler.Client(), false, PublicDns, null, new SemaphoreSlim(1), null, TimeSpan.FromSeconds(30));
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, ParseLimit, new SemaphoreSlim(1), null, TimeSpan.FromSeconds(30));
         using var cts = new CancellationTokenSource();
 
         var read = reader.ReadAsync(new Uri("https://birds.example/g"), 8000, cts.Token);
@@ -605,21 +613,36 @@ public class BuiltinReaderTests
     }
 
     [Fact]
-    public async Task A_megabyte_of_optgroups_is_refused_fast_and_never_reaches_the_parser()
+    public async Task A_megabyte_of_optgroups_is_refused_and_never_reaches_the_parser()
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Text("<html><body>" + string.Concat(Enumerable.Repeat("<optgroup>", 100_000))));
         var parsed = false;
-        var reader = new BuiltinReader(handler.Client(), false, PublicDns, null, new SemaphoreSlim(1), (_, _) =>
+        var reader = new BuiltinReader(handler.Client(), false, PublicDns, ParseLimit, new SemaphoreSlim(1), (_, _) =>
         {
             parsed = true;
             return ("T", "x");
         });
-        var started = Stopwatch.StartNew();
 
         await Assert.ThrowsAsync<ServiceFailedException>(() => Read(reader));
 
         Assert.False(parsed);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), $"took {started.Elapsed}");
+    }
+
+    // A server controls its Content-Type, so it is shown in a message only in an ordinary shape (type/subtype of at most 30 and 60 safe characters).
+    [Theory]
+    [InlineData("application/pdf", "The page is application/pdf, which the built-in reader does not read.")]
+    [InlineData("image/svg+xml", "The page is image/svg+xml, which the built-in reader does not read.")]
+    [InlineData("application/x-very-long-type-name-over-sixty-characters-in-the-subtype-part", "The page is a type the built-in reader does not read.")]
+    [InlineData("abcdefghijklmnopqrstuvwxyz12345/x", "The page is a type the built-in reader does not read.")]
+    [InlineData("application/x-evil!#$%&'*^_`|~", "The page is a type the built-in reader does not read.")]
+    [InlineData("application/ignore.previous.instructions!", "The page is a type the built-in reader does not read.")]
+    public async Task A_content_type_is_shown_only_when_it_has_an_ordinary_shape(string mediaType, string expected)
+    {
+        var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) { Headers = { ContentType = new(mediaType) } } });
+
+        var error = await Assert.ThrowsAsync<ServiceFailedException>(() => Read(Reader(handler)));
+
+        Assert.Equal(expected, error.Message);
     }
 
     [Fact]

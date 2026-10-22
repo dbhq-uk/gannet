@@ -32,6 +32,11 @@ public sealed class ReaderChain(IReadOnlyList<IPageReader> readers)
                 // Typed errors carry gannet's own words (they never include a response body).
                 failures.Add(new ReadFailure(reader.Name, e.ErrorKind, e.Message));
             }
+            catch (HttpRequestException e) when (e.InnerException is ServiceException inner)
+            {
+                // A typed error that travelled inside an HttpRequestException keeps its own kind and wording.
+                failures.Add(new ReadFailure(reader.Name, inner.ErrorKind, inner.Message));
+            }
             catch (HttpRequestException e)
             {
                 failures.Add(new ReadFailure(reader.Name, "failed", $"Could not connect ({e.HttpRequestError})."));

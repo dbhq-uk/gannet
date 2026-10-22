@@ -39,6 +39,27 @@ public class BraveSearchTests
     }
 
     [Fact]
+    public async Task Titles_are_one_line_of_at_most_300_characters_and_snippets_at_most_2000()
+    {
+        var title = "First line\r\n\tsecond line\nthird " + new string('t', 500);
+        var description = string.Join(' ', Enumerable.Repeat("gannet", 1000));
+        var handler = new StubHttpHandler(_ => StubHttpHandler.Json(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            web = new { results = new[] { new { title, url = "https://t.example/", description } } },
+        })));
+
+        var hit = Assert.Single(await Brave(handler).SearchAsync("q", 3, CancellationToken.None));
+
+        Assert.StartsWith("First line second line third ", hit.Title, StringComparison.Ordinal);
+        Assert.InRange(hit.Title.Length, 1, 300);
+        Assert.DoesNotContain('\n', hit.Title);
+        Assert.DoesNotContain('\r', hit.Title);
+        Assert.DoesNotContain('\t', hit.Title);
+        Assert.InRange(hit.Snippet.Length, 1, 2000);
+        Assert.StartsWith("gannet gannet", hit.Snippet, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Missing_key_is_an_auth_error_before_any_request()
     {
         var handler = new StubHttpHandler(_ => StubHttpHandler.Json(Fixture));
@@ -183,7 +204,8 @@ public class BraveSearchTests
         var started = System.Diagnostics.Stopwatch.StartNew();
         var hits = await Brave(handler).SearchAsync("q", 3, CancellationToken.None);
 
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(5), $"took {started.Elapsed}");
-        Assert.Equal(description, Assert.Single(hits).Snippet);
+        // Wide on purpose: the old quadratic pattern needs about 5x10^11 steps on this input, so a regression still fails by a long way.
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(60), $"took {started.Elapsed}");
+        Assert.Equal(new string('<', 2000), Assert.Single(hits).Snippet);
     }
 }

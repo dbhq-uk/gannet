@@ -57,6 +57,7 @@ public static class ProvidersServiceCollectionExtensions
             {
                 var readers = sp.GetRequiredService<IOptions<GannetOptions>>().Value.Readers;
                 var proxy = readers.Proxy;
+                ProxySettings.Validate(proxy);
 
                 // One definition for both uses below: a blank URL is no proxy, so the connect guard must stay on.
                 var useProxy = !string.IsNullOrWhiteSpace(proxy?.Url);

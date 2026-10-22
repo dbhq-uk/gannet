@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 
 namespace Gannet.Providers.Tests.Models;
 
+[Collection("Gemini environment")]
 public class ModelErrorTests
 {
     private const string Secret = "sk-ant-planted-SECRET-fragment";

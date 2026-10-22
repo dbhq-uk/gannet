@@ -46,7 +46,7 @@ internal sealed class BrightDataUnlockerReader : RemoteReaderBase
             // Once a request reaches the unlocker the outer status is 200. An unlock that failed says so in x-brd-error or x-brd-error-code, or in x-brd-err-code
             // for a proxy-level error passed through (its quota codes were handled above). The status of the page itself is in x-brd-status-code.
             // None of these is text we want to read as the page, and none is copied into a message.
-            if (response.Headers.Contains("x-brd-error") || response.Headers.Contains("x-brd-error-code") || response.Headers.Contains("x-brd-err-code"))
+            if (BrightDataErrors.HasUnlockError(response))
             {
                 throw new ServiceFailedException(DisplayName, $"{DisplayName} could not unlock the page.");
             }

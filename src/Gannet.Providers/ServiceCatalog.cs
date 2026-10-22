@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Gannet.Core.Configuration;
 using Gannet.Core.Models;
 using Gannet.Core.Services;
+using Gannet.Providers.Http;
 using Gannet.Providers.Readers;
 using Gannet.Providers.Search;
 using Microsoft.Extensions.Options;
@@ -57,6 +58,7 @@ internal sealed class ServiceCatalog : IServiceCatalog
         this.models = models;
         var gannet = options.Value;
         allowPrivateAddresses = gannet.Readers.AllowPrivateAddresses;
+        ProxySettings.Validate(gannet.Readers.Proxy);
 
         search = Resolve(gannet.Search, SearchTypes.Keys, "search service");
         if (search.Count == 0)
