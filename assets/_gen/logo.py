@@ -222,7 +222,7 @@ def lockup(word=NAVY, ground=None, pad=0):
 
 CANVAS = "#F2F0EB"
 CHARCOAL = "#292827"
-CARD_LINE = "Deep research in which every claim is cited"
+CARD_LINE = "Dives deep, cites everything"  # Dan, 22 Oct 2026
 
 
 def card(width, height):
