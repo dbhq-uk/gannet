@@ -92,7 +92,7 @@ internal sealed class BuiltinReader : IPageReader
                 request.Headers.AcceptLanguage.ParseAdd("en-GB,en;q=0.8");
 
                 // Headers first, so the byte cap applies before HttpClient buffers a body. The response is disposed at the end of each pass.
-                using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                using var response = await ServiceHttp.SendAsync(http, request, DisplayName, deadline.Token);
                 if (response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)
                 {
                     if (response.Headers.Location is not { } location)

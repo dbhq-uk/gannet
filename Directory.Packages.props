@@ -15,7 +15,6 @@
     <PackageVersion Include="Google.GenAI" Version="1.26.1" />
     <!-- Hosting, HTTP, configuration -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.11.0" />
-    <PackageVersion Include="Polly.Core" Version="8.4.2" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.13" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />

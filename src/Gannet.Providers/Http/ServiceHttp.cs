@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Gannet.Core.Services;
+using Polly.Timeout;
 
 namespace Gannet.Providers.Http;
 
@@ -7,6 +8,22 @@ namespace Gannet.Providers.Http;
 internal static class ServiceHttp
 {
     private const int MaxErrorBodyBytes = 64 * 1024;
+
+    /// <summary>
+    /// Sends with the headers read first, so the body cap applies before anything is buffered. Polly's timeout (from the resilience handler) is mapped to
+    /// a typed failure here, so nothing above Providers needs to know about Polly. The caller disposes the response.
+    /// </summary>
+    public static async Task<HttpResponseMessage> SendAsync(HttpClient http, HttpRequestMessage request, string service, CancellationToken ct)
+    {
+        try
+        {
+            return await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (TimeoutRejectedException)
+        {
+            throw new ServiceFailedException(service, $"{service} timed out");
+        }
+    }
 
     /// <summary>
     /// Sends with the headers read first, so the body cap applies before anything is buffered, then maps the status. The quota check runs before the
@@ -19,7 +36,7 @@ internal static class ServiceHttp
         Func<HttpResponseMessage, CancellationToken, Task<bool>> isQuota,
         CancellationToken ct)
     {
-        var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        var response = await SendAsync(http, request, service, ct);
         try
         {
             if (await isQuota(response, ct))
