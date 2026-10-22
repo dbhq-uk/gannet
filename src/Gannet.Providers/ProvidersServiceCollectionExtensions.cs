@@ -100,6 +100,9 @@ public static class ProvidersServiceCollectionExtensions
         // The Anthropic SDK applies its own timeout and retries; HttpClient's 100 s default would cut a long thinking response short.
         services.AddHttpClient(HttpClientNames.Anthropic, c => c.Timeout = Timeout.InfiniteTimeSpan);
 
+        // Chat for OpenRouter and DeepSeek: a long non-streaming generation sends no headers until it finishes, so only the run's cancellation bounds it.
+        services.AddHttpClient(HttpClientNames.ModelChat, c => c.Timeout = Timeout.InfiniteTimeSpan);
+
         // Probes a local vLLM or llama.cpp server for its context length; a server that does not answer quickly is treated as not answering.
         services.AddHttpClient(HttpClientNames.ModelServer, c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddSingleton<IChatClientFactory, ChatClientFactory>();

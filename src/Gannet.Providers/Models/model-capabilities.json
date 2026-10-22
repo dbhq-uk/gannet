@@ -24,5 +24,9 @@
   {"prefix": "o1", "contextWindow": 200000, "supportsTools": true},
   {"prefix": "o3", "contextWindow": 200000, "supportsTools": true},
   {"prefix": "o4", "contextWindow": 200000, "supportsTools": true},
+  {"prefix": "deepseek-v4-pro", "contextWindow": 1000000, "supportsTools": true, "exact": true},
+  {"prefix": "deepseek-flash", "contextWindow": 1000000, "supportsTools": true, "exact": true},
+  {"prefix": "deepseek-v4-flash", "contextWindow": 1000000, "supportsTools": true, "exact": true},
+  {"prefix": "deepseek-v4-flash-vision-exp", "contextWindow": 1000000, "supportsTools": true, "exact": true},
   {"prefix": "gemini-", "contextWindow": 1048576, "supportsTools": true}
 ]

@@ -1,4 +1,5 @@
 using System.ClientModel;
+using System.ClientModel.Primitives;
 using System.Collections.Concurrent;
 using Anthropic;
 using Gannet.Core.Configuration;
@@ -15,9 +16,14 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
 {
     public const int OllamaDefaultContextCap = 32_768;
     private const int UnknownModelContext = 8192;
-    private static readonly string[] Providers = ["Ollama", "OpenAI", "OpenAICompatible", "AzureOpenAI", "Anthropic", "Gemini"];
+    private const string OpenRouterEndpoint = "https://openrouter.ai/api/v1";
+    private const string DeepSeekEndpoint = "https://api.deepseek.com";
+    private static readonly string[] Providers = ["Ollama", "OpenAI", "OpenAICompatible", "AzureOpenAI", "Anthropic", "Gemini", "OpenRouter", "DeepSeek"];
 
     private readonly ConcurrentDictionary<string, Task<ModelHandle>> cache = new(StringComparer.OrdinalIgnoreCase);
+
+    // Names whose handle used fallback values because OpenRouter did not answer; the handle is returned but not kept, so the next call asks again.
+    private readonly ConcurrentDictionary<string, bool> unanswered = new(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyList<ModelDescriptor> Models =>
         [.. options.Value.Models.Select(m => new ModelDescriptor(m.Key, m.Value.Provider, m.Value.Model))];
@@ -33,7 +39,13 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
         var task = cache.GetOrAdd(name, _ => CreateAsync(name, model, CancellationToken.None));
         try
         {
-            return await task.WaitAsync(ct);
+            var handle = await task.WaitAsync(ct);
+            if (unanswered.TryRemove(name, out _))
+            {
+                cache.TryRemove(new KeyValuePair<string, Task<ModelHandle>>(name, task));
+            }
+
+            return handle;
         }
         catch when (task.IsFaulted)
         {
@@ -101,6 +113,16 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
                     return Handle(name, model, gemini.AsIChatClient(model.Model));
                 }
 
+            case "openrouter":
+                return await OpenRouterAsync(name, model, ct);
+
+            case "deepseek":
+                {
+                    // DeepSeek's windows and tool support come from its own model table; an ID the table does not list gets the fixed fallback.
+                    var client = OpenAiChat(RequireKey(name, model), model.Endpoint ?? DeepSeekEndpoint, null).GetChatClient(model.Model).AsIChatClient();
+                    return Handle(name, model, client);
+                }
+
             default:
                 throw new InvalidOperationException($"Model '{name}' has provider '{model.Provider}'. Use one of: {string.Join(", ", Providers)}.");
         }
@@ -128,6 +150,55 @@ internal sealed class ChatClientFactory(IOptions<GannetOptions> options, IHttpCl
             model.ContextWindow ?? served ?? known?.ContextWindow ?? UnknownModelContext,
             model.SupportsTools ?? (served is null ? known?.SupportsTools : null) ?? false);
         return new ModelHandle(name, client, capabilities);
+    }
+
+    /// <summary>
+    /// OpenRouter's own catalogue says what each model can do, so the window and tools are, in order: configuration, what OpenRouter reports, then 8,192 with no tools. The static
+    /// table is not used, because OpenRouter IDs ("anthropic/claude-...") are not the vendors' own. A probe that fails is not kept.
+    /// </summary>
+    private async Task<ModelHandle> OpenRouterAsync(string name, ModelOptions model, CancellationToken ct)
+    {
+        var key = RequireKey(name, model);
+        var endpoint = model.Endpoint ?? OpenRouterEndpoint;
+        var client = OpenAiChat(key, endpoint, new HeaderPolicy(new Dictionary<string, string>
+        {
+            ["HTTP-Referer"] = "https://github.com/dbhq-uk/gannet",
+            ["X-OpenRouter-Title"] = "gannet",
+        })).GetChatClient(model.Model).AsIChatClient();
+
+        (int? ContextWindow, bool SupportsTools)? reported = null;
+        if (model.ContextWindow is null || model.SupportsTools is null)
+        {
+            reported = await OpenRouterModelInfo.ReadAsync(http.CreateClient(HttpClientNames.ModelServer), new Uri(endpoint), model.Model, key, ct);
+            if (reported is not { ContextWindow: not null })
+            {
+                unanswered[name] = true;
+            }
+        }
+
+        return new ModelHandle(
+            name,
+            client,
+            new ModelCapabilities(
+                model.ContextWindow ?? reported?.ContextWindow ?? UnknownModelContext,
+                model.SupportsTools ?? reported?.SupportsTools ?? false));
+    }
+
+    /// <summary>An OpenAI-format client whose requests go through the pooled chat HttpClient, which has no timeout of its own, and whose SDK timeout is off for the same reason.</summary>
+    private OpenAIClient OpenAiChat(string key, string endpoint, PipelinePolicy? policy)
+    {
+        var options = new OpenAIClientOptions
+        {
+            Endpoint = new Uri(endpoint),
+            Transport = new HttpClientPipelineTransport(http.CreateClient(HttpClientNames.ModelChat)),
+            NetworkTimeout = Timeout.InfiniteTimeSpan,
+        };
+        if (policy is not null)
+        {
+            options.AddPolicy(policy, PipelinePosition.PerCall);
+        }
+
+        return new OpenAIClient(new ApiKeyCredential(key), options);
     }
 
     private static OpenAIClient OpenAi(string key, string? endpoint) =>
