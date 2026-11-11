@@ -1,6 +1,6 @@
 # Build and run gannet's web host. Central package management means the whole repository is
 # copied so restore sees Directory.Packages.props and Directory.Build.props.
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /src
 COPY . .
 RUN dotnet publish src/Gannet.Web/Gannet.Web.csproj -c Release -o /app/web \
