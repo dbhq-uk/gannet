@@ -6,7 +6,7 @@ COPY . .
 RUN dotnet publish src/Gannet.Web/Gannet.Web.csproj -c Release -o /app/web \
  && dotnet publish src/Gannet.Cli/Gannet.Cli.csproj -c Release -o /app/cli
 
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/aspnet:11.0 AS runtime
 WORKDIR /app
 COPY --from=build /app/web .
 COPY --from=build /app/cli /app/cli
